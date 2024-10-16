@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import pydeck as pdk
 import httpx
 import asyncio
-import io
 import numpy as np
 from typing import List, Dict, Any
 
@@ -47,7 +46,7 @@ st.markdown("""
 1. First make sure you have a corresponding API Key to use with [Skydio Markers API](https://apidocs.skydio.com/reference/87u7ko6t0dqmfgngmarkers_post_v0_marker)
 2. Utilize [this Google Sheets](https://docs.google.com/spreadsheets/d/1Iz7aVcoIcEGnVnqyHDeo-MC9nO6ORBlwpj7QSgHHfVs/edit?gid=0#gid=0) template to create your markers
 3. "File" > "Download" > "Comma-separated values (.csv, current sheet)"
-4. [Optiona] Verify data within this app through tabular viewer or map
+4. [Optional] Verify data within this app through tabular viewer or map
 5. Provide API Key + upload!
 
 Then upload file below:""")
@@ -97,12 +96,23 @@ if uploaded_file:
         # Drop rows with invalid coordinates
         csv_data = csv_data.dropna(subset=['LATITUDE', 'LONGITUDE'])
 
-        # Create a PyDeck map layer
+        # Assign color based on type
+        def get_color(marker_type):
+            if "CRITICAL" in marker_type:
+                return [255, 0, 0, 160]  # Red for critical
+            elif "HIGH" in marker_type or "SERIOUS" in marker_type:
+                return [255, 165, 0, 160]  # Orange for serious
+            else:
+                return [255, 255, 0, 160]  # Yellow for non-serious
+
+        csv_data['COLOR'] = csv_data['TYPE'].apply(get_color)
+
+        # Create a PyDeck map layer with circular markers
         layer = pdk.Layer(
             'ScatterplotLayer',
             data=csv_data,
             get_position='[LONGITUDE, LATITUDE]',
-            get_color='[200, 30, 0, 160]',
+            get_color='COLOR',
             get_radius=1,
             radius_min_pixels=10,
             radius_max_pixels=10,
