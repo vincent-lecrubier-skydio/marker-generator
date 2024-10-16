@@ -1,43 +1,29 @@
 import streamlit as st
 import pandas as pd
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 import pydeck as pdk
-# Assuming you have this for the upload functionality
-import marker_upsert_utils as marker_utils
+import httpx
+import asyncio
+import io
+from typing import List, Dict, Any
 
 # Function to convert the CSV data to JSON
 
 
-def csv_to_json(csv_data):
-    markers_data = {
-        "data": {
-            "organization": {
-                "markers": {
-                    "edges": []
-                }
-            }
-        }
-    }
-
+def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[Any, Any]]:
+    markers_data = []
     for index, row in csv_data.iterrows():
-        # Build the marker JSON structure based on the CSV structure
-        # Format time in the required format
-        event_time = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
-        edge = {
-            "node": {
-                "jsonMetadata": {
-                    # Incident description
-                    "description": row['INCIDENT_DESCRIPTION'],
-                    "eventTime": event_time,  # Current timestamp in ISO format with 'Z' for UTC
-                    "latitude": row['LATITUDE'],  # Latitude
-                    "longitude": row['LONGITUDE']  # Longitude
-                },
-                "type": row['INCIDENT_TYPE']  # Marker type
-            }
+        marker = {
+            "type": row['TYPE'] or "INCIDENT_LOCATION_LOW_PRIORITY",
+            "description": row['DESCRIPTION'] or f"Incident {index}",
+            "event_time": (datetime.now() + timedelta(seconds=row['DELAY'] or 0)).isoformat(),
+            "external_id": None if pd.isna(row['EXTERNALID']) or not row['EXTERNALID'] else row['EXTERNALID'],
+            "latitude": row['LATITUDE'],
+            "longitude": row['LONGITUDE'],
+            "uuid": None if pd.isna(row['UUID']) or not row['UUID'] else row['UUID']
         }
-        markers_data["data"]["organization"]["markers"]["edges"].append(edge)
-
+        markers_data.append(marker)
     return markers_data
 
 
@@ -59,6 +45,7 @@ uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
 if uploaded_file:
     # Read CSV into a pandas DataFrame
     csv_data = pd.read_csv(uploaded_file)
+    csv_data.sort_values(by='DELAY', ascending=True)
 
     # Collapsible section for the uploaded CSV (open by default)
     with st.expander("Uploaded CSV Data", expanded=True):
@@ -87,90 +74,101 @@ if uploaded_file:
             mime="application/json"
         )
 
-    # Pydeck map to visualize the lat/long from the CSV data
-    st.subheader("Map of Incident Locations")
+    with st.expander("Markers Map", expanded=False):
+        # Ensure the latitude and longitude columns are numeric
+        csv_data['LATITUDE'] = pd.to_numeric(
+            csv_data['LATITUDE'], errors='coerce')
+        csv_data['LONGITUDE'] = pd.to_numeric(
+            csv_data['LONGITUDE'], errors='coerce')
 
-    # Ensure the latitude and longitude columns are numeric
-    csv_data['LATITUDE'] = pd.to_numeric(csv_data['LATITUDE'], errors='coerce')
-    csv_data['LONGITUDE'] = pd.to_numeric(
-        csv_data['LONGITUDE'], errors='coerce')
+        # Drop rows with invalid coordinates
+        csv_data = csv_data.dropna(subset=['LATITUDE', 'LONGITUDE'])
 
-    # Drop rows with invalid coordinates
-    csv_data = csv_data.dropna(subset=['LATITUDE', 'LONGITUDE'])
+        # Create a PyDeck map layer
+        layer = pdk.Layer(
+            'ScatterplotLayer',
+            data=csv_data,
+            get_position='[LONGITUDE, LATITUDE]',
+            get_color='[200, 30, 0, 160]',
+            get_radius=100,
+            pickable=True
+        )
 
-    # Create a PyDeck map layer
-    layer = pdk.Layer(
-        'ScatterplotLayer',
-        data=csv_data,
-        get_position='[LONGITUDE, LATITUDE]',
-        get_color='[200, 30, 0, 160]',
-        get_radius=100,
-        pickable=True
-    )
+        # Set the view for the map (centered around the first marker)
+        view_state = pdk.ViewState(
+            latitude=csv_data['LATITUDE'].mean(),
+            longitude=csv_data['LONGITUDE'].mean(),
+            zoom=12,
+            pitch=0  # Top-down view
+        )
 
-    # Set the view for the map (centered around the first marker)
-    view_state = pdk.ViewState(
-        latitude=csv_data['LATITUDE'].mean(),
-        longitude=csv_data['LONGITUDE'].mean(),
-        zoom=12,
-        pitch=0  # Top-down view
-    )
+        # Create the PyDeck map with Mapbox base style
+        deck = pdk.Deck(
+            layers=[layer],
+            initial_view_state=view_state,
+            tooltip={"text": "{DESCRIPTION}"},
+            map_style="mapbox://styles/mapbox/streets-v11"  # Mapbox base style
+        )
 
-    # Create the PyDeck map with Mapbox base style
-    deck = pdk.Deck(
-        layers=[layer],
-        initial_view_state=view_state,
-        tooltip={"text": "{INCIDENT_DESCRIPTION}"},
-        map_style="mapbox://styles/mapbox/streets-v11"  # Mapbox base style
-    )
+        # Display the map in Streamlit
+        st.pydeck_chart(deck)
 
-    # Display the map in Streamlit
-    st.pydeck_chart(deck)
+    # url = "https://api.skydio.com/api/v0/marker"
 
-# API credentials and details
-st.subheader("API Interaction")
-org_uuid = st.text_input("Organization UUID:", value="ORG_UUID")
-api_key = st.text_input("API Key:", type="password")
-api_url = st.text_input(
-    "API URL:", value="https://your-api-endpoint.com/graphql")
+    # payload = {
+    #     "type": "INCIDENT_LOCATION_LOW_PRIORITY",
+    #     "description": "Big problem",
+    #     "event_time": "2022-05-03T03:10:52.503+00:00",
+    #     "external_id": "XYZ-32939",
+    #     "latitude": 45,
+    #     "longitude": 10,
+    #     "uuid": "9565d76b-ca6a-40db-8486-7aa1bbc59cc0"
+    # }
+    # headers = {
+    #     "accept": "application/json",
+    #     "content-type": "application/json"
+    # }
 
-# Upload Markers Button
-if st.button("Upload Markers"):
-    if org_uuid and api_key and api_url:
-        try:
-            # Extract the list of markers from the nested structure
-            edges = markers_json["data"]["organization"]["markers"]["edges"]
+    api_url = st.text_input("API url", type="default",
+                            value="https://api.skydio.com")
+    api_key = st.text_input("API key", type="password")
 
-            # Flatten the structure to get a list of markers (each "node" from the edges)
-            markers_list = [edge["node"] for edge in edges]
+    async def upload_marker(session, request_url, headers, marker, i):
+        delay = (datetime.fromisoformat(
+            marker["event_time"]) - datetime.now()).total_seconds()
+        if delay > 0:
+            await asyncio.sleep(delay)
+        response = await session.post(request_url, headers=headers, data=marker)
+        if response.status_code != 200:
+            return f"Marker {i}: {response.text}"
+        return None
 
-            # Rename 'jsonMetadata' to 'json_metadata' for each marker
-            for marker in markers_list:
-                marker["json_metadata"] = marker.pop("jsonMetadata")
+    async def send_markers():
+        request_url = f"{api_url}/api/v0/marker"
 
-            # Debugging: Check the type and structure of markers_list before uploading
-            st.write(f"Markers List Type: {type(markers_list)}")
-            st.write(f"Markers List Content: {markers_list}")
+        headers = {
+            "Authorization": f"{api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        error_messages = []
 
-            # Pass the list of markers to upsert_markers function
-            created_count = marker_utils.upsert_markers(
-                api_url, org_uuid, api_key, markers_list)
-            st.success(f"Successfully uploaded {created_count} markers.")
-        except Exception as e:
-            st.error(f"Error uploading markers: {str(e)}")
-    else:
-        st.error("Please provide the Organization UUID, API Key, and API URL.")
+        async with httpx.AsyncClient() as session:
+            tasks = []
+            for i, marker in enumerate(markers_json):
+                tasks.append(upload_marker(session, request_url,
+                                           headers, marker, i))
+            results = await asyncio.gather(*tasks)
 
-# Delete Markers Button
-if st.button("Delete All Markers"):
-    if org_uuid and api_key and api_url:
-        try:
-            # Call the function to clear all markers and operations
-            response = marker_utils.clear_markers_and_operations(
-                api_url, org_uuid, api_key)
-            st.success(
-                f"Successfully deleted {response['data']['clearOrgOperationsAndMarkers']['markersDeleted']} markers.")
-        except Exception as e:
-            st.error(f"Error deleting markers: {str(e)}")
-    else:
-        st.error("Please provide the Organization UUID, API Key, and API URL.")
+        for result in results:
+            if result:
+                error_messages.append(result)
+
+        if error_messages:
+            st.error("Errors occurred during the upload:\n" +
+                     "\n".join(error_messages))
+        else:
+            st.success("All markers uploaded successfully!")
+
+    if st.button("Send Markers"):
+        asyncio.run(send_markers())
