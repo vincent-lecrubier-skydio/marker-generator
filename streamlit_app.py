@@ -6,6 +6,7 @@ import pydeck as pdk
 import httpx
 import asyncio
 import io
+import numpy as np
 from typing import List, Dict, Any
 
 # Function to convert the CSV data to JSON
@@ -90,15 +91,35 @@ if uploaded_file:
             data=csv_data,
             get_position='[LONGITUDE, LATITUDE]',
             get_color='[200, 30, 0, 160]',
-            get_radius=100,
+            get_radius=1,
+            radius_min_pixels=10,
+            radius_max_pixels=10,
             pickable=True
         )
 
-        # Set the view for the map (centered around the first marker)
+        # Example csv_data with latitude and longitude columns
+        min_latitude = csv_data['LATITUDE'].min()
+        max_latitude = csv_data['LATITUDE'].max()
+        min_longitude = csv_data['LONGITUDE'].min()
+        max_longitude = csv_data['LONGITUDE'].max()
+
+        # Compute the center point (mean latitude and longitude)
+        center_latitude = csv_data['LATITUDE'].mean()
+        center_longitude = csv_data['LONGITUDE'].mean()
+
+        # Compute the max distance in latitude and longitude (rough approximation)
+        lat_diff = max_latitude - min_latitude
+        lon_diff = max_longitude - min_longitude
+
+        # Approximate zoom level based on distance (this is a rough calculation)
+        # Higher zoom values give closer views; smaller values zoom out more
+        zoom_level = 8 - np.log(max(lat_diff, lon_diff))
+
+        # Set up the view state in pydeck
         view_state = pdk.ViewState(
-            latitude=csv_data['LATITUDE'].mean(),
-            longitude=csv_data['LONGITUDE'].mean(),
-            zoom=12,
+            latitude=center_latitude,
+            longitude=center_longitude,
+            zoom=zoom_level,
             pitch=0  # Top-down view
         )
 
@@ -113,27 +134,11 @@ if uploaded_file:
         # Display the map in Streamlit
         st.pydeck_chart(deck)
 
-    # url = "https://api.skydio.com/api/v0/marker"
-
-    # payload = {
-    #     "type": "INCIDENT_LOCATION_LOW_PRIORITY",
-    #     "description": "Big problem",
-    #     "event_time": "2022-05-03T03:10:52.503+00:00",
-    #     "external_id": "XYZ-32939",
-    #     "latitude": 45,
-    #     "longitude": 10,
-    #     "uuid": "9565d76b-ca6a-40db-8486-7aa1bbc59cc0"
-    # }
-    # headers = {
-    #     "accept": "application/json",
-    #     "content-type": "application/json"
-    # }
-
     api_url = st.text_input("API url", type="default",
                             value="https://api.skydio.com")
     api_key = st.text_input("API key", type="password")
 
-    async def upload_marker(session, request_url, headers, marker, i):
+    async def send_marker(session, request_url, headers, marker, i):
         delay = (datetime.fromisoformat(
             marker["event_time"]) - datetime.now()).total_seconds()
         if delay > 0:
@@ -156,8 +161,8 @@ if uploaded_file:
         async with httpx.AsyncClient() as session:
             tasks = []
             for i, marker in enumerate(markers_json):
-                tasks.append(upload_marker(session, request_url,
-                                           headers, marker, i))
+                tasks.append(send_marker(session, request_url,
+                                         headers, marker, i))
             results = await asyncio.gather(*tasks)
 
         for result in results:
