@@ -10,35 +10,47 @@ import numpy as np
 from typing import List, Dict, Any
 
 # Function to convert the CSV data to JSON
-
-
-def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[Any, Any]]:
+def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[str, Any]]:
     markers_data = []
     for index, row in csv_data.iterrows():
+        # Set default values to ensure compliance with API requirements
+        type_value = row['TYPE'] if pd.notna(row['TYPE']) else "INCIDENT_LOCATION_LOW_PRIORITY"
+        description_value = row['DESCRIPTION'] if pd.notna(row['DESCRIPTION']) else f"Incident {index}"
+        event_time_value = (datetime.now() + timedelta(seconds=row['DELAY'] if pd.notna(row['DELAY']) else 0)).isoformat()
+        latitude_value = row['LATITUDE']
+        longitude_value = row['LONGITUDE']
+
+        # Create the marker dict
         marker = {
-            "type": row['TYPE'] or "INCIDENT_LOCATION_LOW_PRIORITY",
-            "description": row['DESCRIPTION'] or f"Incident {index}",
-            "event_time": (datetime.now() + timedelta(seconds=row['DELAY'] or 0)).isoformat(),
-            "external_id": None if pd.isna(row['EXTERNALID']) or not row['EXTERNALID'] else row['EXTERNALID'],
-            "latitude": row['LATITUDE'],
-            "longitude": row['LONGITUDE'],
-            "uuid": None if pd.isna(row['UUID']) or not row['UUID'] else row['UUID']
+            "type": type_value,
+            "description": description_value,
+            "event_time": event_time_value,
+            "latitude": latitude_value,
+            "longitude": longitude_value,
         }
+
+        # Optional fields: only add if not null or empty
+        if pd.notna(row['EXTERNALID']) and row['EXTERNALID']:
+            marker["external_id"] = row['EXTERNALID']
+        if pd.notna(row['UUID']) and row['UUID']:
+            marker["uuid"] = row['UUID']
+
         markers_data.append(marker)
     return markers_data
 
-
 # Streamlit app interface
-st.title("CSV to JSON Marker Conversion, Mapping, and Upload")
+st.title("Marker Generator")
 
 st.markdown("""
-Use this as a template: 
+#### Usage:
 
-https://docs.google.com/spreadsheets/d/1Iz7aVcoIcEGnVnqyHDeo-MC9nO6ORBlwpj7QSgHHfVs/edit?gid=0#gid=0
+1. First make sure you have a corresponding API Key to use with [Skydio Markers API](https://apidocs.skydio.com/reference/87u7ko6t0dqmfgngmarkers_post_v0_marker)
+2. Utilize [this Google Sheets](https://docs.google.com/spreadsheets/d/1Iz7aVcoIcEGnVnqyHDeo-MC9nO6ORBlwpj7QSgHHfVs/edit?gid=0#gid=0) template to create your markers
+3. "File" > "Download" > "Comma-separated values (.csv, current sheet)"
+4. [Optiona] Verify data within this app through tabular viewer or map
+5. Provide API Key + upload!
 
-Export as `.csv`
-
-Then upload file here:""")
+Then upload file below:""")
 
 # Upload CSV File
 uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
@@ -143,7 +155,12 @@ if uploaded_file:
             marker["event_time"]) - datetime.now()).total_seconds()
         if delay > 0:
             await asyncio.sleep(delay)
-        response = await session.post(request_url, headers=headers, data=marker)
+        response = await session.post(request_url, headers=headers, json=marker)
+
+        # Uncomment below to debug: log request and response details
+        # st.write(f"Marker {i} payload: {json.dumps(marker, indent=2)}")
+        # st.write(f"Marker {i} response: {response.status_code} - {response.text}")
+
         if response.status_code != 200:
             return f"Marker {i}: {response.text}"
         return None
