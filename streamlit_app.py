@@ -9,8 +9,6 @@ import asyncio
 import numpy as np
 from typing import List, Dict, Any
 
-# Function to convert the CSV data to JSON
-
 
 def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[str, Any]]:
     markers_data = []
@@ -45,7 +43,12 @@ def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[str, Any]]:
 
 
 def main():
-    # Streamlit app interface
+    st.set_page_config(
+        page_title="Marker Generator",
+        page_icon="🚨",
+        layout="wide"
+    )
+
     st.title("🚨 Marker Generator")
 
     scenario_file = None
