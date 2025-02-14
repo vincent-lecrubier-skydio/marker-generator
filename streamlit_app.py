@@ -37,21 +37,26 @@ def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[str, Any]]:
         }
 
         # Optional fields: only add if not null or empty
+        # NOTE: Checking some fields with "in row.keys()" to avoid KeyError and make the code backward compatible
         if pd.notna(row["EXTERNALID"]) and row["EXTERNALID"]:
             marker["external_id"] = row["EXTERNALID"]
-        if pd.notna(row["UUID"]) and row["UUID"]:
+        if "UUID" in row.keys() and pd.notna(row["UUID"]) and row["UUID"]:
             marker["uuid"] = row["UUID"]
-        if pd.notna(row["AREA"]) and row["AREA"]:
+        if "AREA" in row.keys() and pd.notna(row["AREA"]) and row["AREA"]:
             marker["area"] = row["AREA"]
-        if pd.notna(row["TITLE"]) and row["TITLE"]:
+        if "TITLE" in row.keys() and pd.notna(row["TITLE"]) and row["TITLE"]:
             marker["title"] = row["TITLE"]
 
         marker_details = {}
-        if pd.notna(row["CODE"]) and row["CODE"]:
+        if "CODE" in row.keys() and pd.notna(row["CODE"]) and row["CODE"]:
             marker_details["code"] = row["CODE"]
-        if pd.notna(row["INCIDENT_ID"]) and row["INCIDENT_ID"]:
+        if (
+            "INCIDENT_ID" in row.keys()
+            and pd.notna(row["INCIDENT_ID"])
+            and row["INCIDENT_ID"]
+        ):
             marker_details["incident_id"] = row["INCIDENT_ID"]
-        if pd.notna(row["PRIORITY"]) and row["PRIORITY"]:
+        if "PRIORITY" in row.keys() and pd.notna(row["PRIORITY"]) and row["PRIORITY"]:
             marker_details["priority"] = row["PRIORITY"]
 
         if marker_details:
