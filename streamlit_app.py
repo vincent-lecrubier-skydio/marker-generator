@@ -175,7 +175,7 @@ def main():
         elif "api_token" in st.query_params:
             del st.query_params["api_token"]
 
-    if csv_data:
+    if csv_data is not None:
         with st.expander("📄 Toolbox", expanded=False):
             # Read CSV into a pandas DataFrame
             csv_data.sort_values(by="DELAY", ascending=True)
@@ -228,14 +228,14 @@ def main():
 
                 # Assign color based on type
                 def get_color(marker_type):
-                    if "CRITICAL" in marker_type:
+                    if "High" in marker_type:
                         return [255, 0, 0, 160]  # Red for critical
-                    elif "HIGH" in marker_type or "SERIOUS" in marker_type:
+                    elif "Medium" in marker_type:
                         return [255, 165, 0, 160]  # Orange for serious
                     else:
                         return [255, 255, 0, 160]  # Yellow for non-serious
 
-                csv_data["COLOR"] = csv_data["TYPE"].apply(get_color)
+                csv_data["COLOR"] = csv_data["PRIORITY"].apply(get_color)
 
                 # Create a PyDeck map layer with circular markers
                 layer = pdk.Layer(
