@@ -29,7 +29,7 @@ def csv_to_json(
         details_value = (
             row["DETAILS"]
             if "DETAILS" in row.keys() and pd.notna(row["DETAILS"])
-            else None
+            else f"Example details {index}"
         )
         latitude_value = row["LATITUDE"]
         longitude_value = row["LONGITUDE"]
