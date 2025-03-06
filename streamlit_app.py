@@ -10,33 +10,48 @@ import numpy as np
 from typing import List, Dict, Any
 
 
-def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[str, Any]]:
+def csv_to_json(
+    csv_data: pd.DataFrame, force_new_markers_ui: bool = False
+) -> List[Dict[str, Any]]:
     markers_data = []
     for index, row in csv_data.iterrows():
         # Set default values to ensure compliance with API requirements
         type_value = (
-            row["TYPE"] if pd.notna(
-                row["TYPE"]) else "INCIDENT_LOCATION_LOW_PRIORITY"
+            row["TYPE"] if pd.notna(row["TYPE"]) else "INCIDENT_LOCATION_LOW_PRIORITY"
         )
         description_value = (
-            row["DESCRIPTION"] if pd.notna(
-                row["DESCRIPTION"]) else f"Incident {index}"
+            row["DESCRIPTION"] if pd.notna(row["DESCRIPTION"]) else f"Incident {index}"
         )
         event_time_value = (
             datetime.now()
             + timedelta(seconds=row["DELAY"] if pd.notna(row["DELAY"]) else 0)
         ).isoformat()
+        details_value = (
+            row["DETAILS"]
+            if "DETAILS" in row.keys() and pd.notna(row["DETAILS"])
+            else f"Example details {index}"
+        )
         latitude_value = row["LATITUDE"]
         longitude_value = row["LONGITUDE"]
 
         # Create the marker dict
-        marker = {
-            "type": type_value,
-            "description": description_value,
-            "event_time": event_time_value,
-            "latitude": latitude_value,
-            "longitude": longitude_value,
-        }
+        if not force_new_markers_ui:
+            marker = {
+                "type": type_value,
+                "description": description_value,
+                "event_time": event_time_value,
+                "latitude": latitude_value,
+                "longitude": longitude_value,
+            }
+        else:
+            marker = {
+                "type": "INCIDENT",
+                "title": description_value,
+                "description": details_value,
+                "event_time": event_time_value,
+                "latitude": latitude_value,
+                "longitude": longitude_value,
+            }
 
         # Optional fields: only add if not null or empty
         # NOTE: Checking some fields with "in row.keys()" to avoid KeyError and make the code backward compatible
@@ -69,8 +84,7 @@ def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[str, Any]]:
 
 
 def main():
-    st.set_page_config(page_title="Marker Generator",
-                       page_icon="🚨", layout="wide")
+    st.set_page_config(page_title="Marker Generator", page_icon="🚨", layout="wide")
 
     st.title("🚨 Marker Generator")
 
@@ -79,6 +93,8 @@ def main():
     scenario_mode_preset = "⚡️ Preset"
     scenario_mode_random = "🎲 Random"
     scenario_mode_custom = "📄 Custom"
+
+    force_new_markers_ui = False
 
     scenario_mode = st.segmented_control(
         "Mode:",
@@ -107,8 +123,7 @@ def main():
             else f"🟢 Select Preset Scenario: {st.session_state.get('scenario')}"
         )
         with st.expander(
-            scenario_preset_label, expanded=st.session_state.get(
-                "scenario") is None
+            scenario_preset_label, expanded=st.session_state.get("scenario") is None
         ):
             st.markdown("""
             - Select one of the preset scenarios below
@@ -132,7 +147,7 @@ def main():
         )
         with st.expander(
             scenario_upload_label,
-            expanded=st.session_state.get("scenario_uploaded_file") is None,
+            expanded=True,
         ):
             st.markdown("""
             1. Utilize [this Google Sheets](https://docs.google.com/spreadsheets/d/1Iz7aVcoIcEGnVnqyHDeo-MC9nO6ORBlwpj7QSgHHfVs/edit?gid=0#gid=0) template to create your markers
@@ -140,6 +155,10 @@ def main():
             3. Upload file below""")
             uploaded_file = st.file_uploader(
                 "", type=["csv"], key="scenario_uploaded_file"
+            )
+            force_new_markers_ui = st.checkbox(
+                "Convert old .csv files automatically to the new markers UI. **Note: In the new UI all incident markers are critical red color.**",
+                key="force_new_markers",
             )
             scenario_file = uploaded_file
             if scenario_file:
@@ -164,8 +183,7 @@ def main():
     )
     with st.expander(configuration_label):
         api_url = st.text_input("API URL", type="default", key="api_url")
-        api_token = st.text_input(
-            "API Token", type="password", key="api_token")
+        api_token = st.text_input("API Token", type="password", key="api_token")
         if api_url is not None and api_url != "https://api.skydio.com":
             st.query_params["api_url"] = api_url
         elif "api_url" in st.query_params:
@@ -193,7 +211,7 @@ def main():
                 st.data_editor(csv_data)
 
             # Convert CSV to JSON
-            markers_json = csv_to_json(csv_data)
+            markers_json = csv_to_json(csv_data, force_new_markers_ui)
 
             # Collapsible section for the generated JSON (collapsed by default)
             with markers_json_viewer:
@@ -321,8 +339,7 @@ def main():
             async with httpx.AsyncClient() as session:
                 tasks = []
                 for i, marker in enumerate(markers_json):
-                    tasks.append(send_marker(
-                        session, request_url, headers, marker, i))
+                    tasks.append(send_marker(session, request_url, headers, marker, i))
                 results = await asyncio.gather(*tasks)
 
             for result in results:
@@ -331,16 +348,14 @@ def main():
 
             if error_messages:
                 st.error(
-                    "Errors occurred during the upload:\n\n" +
-                    "\n".join(error_messages)
+                    "Errors occurred during the upload:\n\n" + "\n".join(error_messages)
                 )
                 if any("Invalid Authorization header" in s for s in error_messages):
                     st.info(
                         "Advice: Please check your API Token and make sure it is correct."
                     )
                 else:
-                    st.warning(
-                        "Advice: Please check the markers data and try again.")
+                    st.warning("Advice: Please check the markers data and try again.")
             else:
                 st.success("All markers uploaded successfully!")
 
