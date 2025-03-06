@@ -235,7 +235,7 @@ def main():
                     else:
                         return [255, 255, 0, 160]  # Yellow for non-serious
 
-                csv_data["COLOR"] = csv_data["PRIORITY"].apply(get_color)
+                csv_data["COLOR"] = csv_data["PRIORITY"].apply(get_color) if "PRIORITY" in csv_data.columns else [[255, 0, 0, 160]] * len(csv_data)
 
                 # Create a PyDeck map layer with circular markers
                 layer = pdk.Layer(
