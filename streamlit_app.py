@@ -157,7 +157,7 @@ def main():
                 "", type=["csv"], key="scenario_uploaded_file"
             )
             force_new_markers_ui = st.checkbox(
-                "Convert old .csv files automatically to the new markers UI",
+                "Convert old .csv files automatically to the new markers UI. **Note: In the new UI all incident markers are critical red color.**",
                 key="force_new_markers",
             )
             scenario_file = uploaded_file
