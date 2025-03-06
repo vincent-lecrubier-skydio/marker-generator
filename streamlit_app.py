@@ -15,10 +15,12 @@ def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[str, Any]]:
     for index, row in csv_data.iterrows():
         # Set default values to ensure compliance with API requirements
         type_value = (
-            row["TYPE"] if pd.notna(row["TYPE"]) else "INCIDENT_LOCATION_LOW_PRIORITY"
+            row["TYPE"] if pd.notna(
+                row["TYPE"]) else "INCIDENT_LOCATION_LOW_PRIORITY"
         )
         description_value = (
-            row["DESCRIPTION"] if pd.notna(row["DESCRIPTION"]) else f"Incident {index}"
+            row["DESCRIPTION"] if pd.notna(
+                row["DESCRIPTION"]) else f"Incident {index}"
         )
         event_time_value = (
             datetime.now()
@@ -67,17 +69,20 @@ def csv_to_json(csv_data: pd.DataFrame) -> List[Dict[str, Any]]:
 
 
 def main():
-    st.set_page_config(page_title="Marker Generator", page_icon="🚨", layout="wide")
+    st.set_page_config(page_title="Marker Generator",
+                       page_icon="🚨", layout="wide")
 
     st.title("🚨 Marker Generator")
 
-    scenario_file = None
+    csv_data = None
 
-    scenario_mode_custom = "📄 Custom"
     scenario_mode_preset = "⚡️ Preset"
+    scenario_mode_random = "🎲 Random"
+    scenario_mode_custom = "📄 Custom"
+
     scenario_mode = st.segmented_control(
         "Mode:",
-        [scenario_mode_preset, scenario_mode_custom],
+        [scenario_mode_preset, scenario_mode_random, scenario_mode_custom],
         default=scenario_mode_preset,
     )
     if scenario_mode == scenario_mode_preset:
@@ -102,7 +107,8 @@ def main():
             else f"🟢 Select Preset Scenario: {st.session_state.get('scenario')}"
         )
         with st.expander(
-            scenario_preset_label, expanded=st.session_state.get("scenario") is None
+            scenario_preset_label, expanded=st.session_state.get(
+                "scenario") is None
         ):
             st.markdown("""
             - Select one of the preset scenarios below
@@ -115,6 +121,9 @@ def main():
             scenario_file = (
                 f"{directory}/{scenario}.csv" if scenario is not None else None
             )
+            if scenario_file:
+                csv_data = pd.read_csv(scenario_file)
+
     if scenario_mode == scenario_mode_custom:
         scenario_upload_label = (
             "🔴 Upload Custom Scenario"
@@ -133,6 +142,8 @@ def main():
                 "", type=["csv"], key="scenario_uploaded_file"
             )
             scenario_file = uploaded_file
+            if scenario_file:
+                csv_data = pd.read_csv(scenario_file)
 
     if "api_url" not in st.session_state:
         if "api_url" in st.query_params:
@@ -153,7 +164,8 @@ def main():
     )
     with st.expander(configuration_label):
         api_url = st.text_input("API URL", type="default", key="api_url")
-        api_token = st.text_input("API Token", type="password", key="api_token")
+        api_token = st.text_input(
+            "API Token", type="password", key="api_token")
         if api_url is not None and api_url != "https://api.skydio.com":
             st.query_params["api_url"] = api_url
         elif "api_url" in st.query_params:
@@ -163,10 +175,9 @@ def main():
         elif "api_token" in st.query_params:
             del st.query_params["api_token"]
 
-    if scenario_file:
+    if csv_data:
         with st.expander("📄 Toolbox", expanded=False):
             # Read CSV into a pandas DataFrame
-            csv_data = pd.read_csv(scenario_file)
             csv_data.sort_values(by="DELAY", ascending=True)
 
             markers_map_viewer, scenario_editor, markers_json_viewer = st.tabs(
@@ -304,7 +315,8 @@ def main():
             async with httpx.AsyncClient() as session:
                 tasks = []
                 for i, marker in enumerate(markers_json):
-                    tasks.append(send_marker(session, request_url, headers, marker, i))
+                    tasks.append(send_marker(
+                        session, request_url, headers, marker, i))
                 results = await asyncio.gather(*tasks)
 
             for result in results:
@@ -313,14 +325,16 @@ def main():
 
             if error_messages:
                 st.error(
-                    "Errors occurred during the upload:\n\n" + "\n".join(error_messages)
+                    "Errors occurred during the upload:\n\n" +
+                    "\n".join(error_messages)
                 )
                 if any("Invalid Authorization header" in s for s in error_messages):
                     st.info(
                         "Advice: Please check your API Token and make sure it is correct."
                     )
                 else:
-                    st.warning("Advice: Please check the markers data and try again.")
+                    st.warning(
+                        "Advice: Please check the markers data and try again.")
             else:
                 st.success("All markers uploaded successfully!")
 
