@@ -139,6 +139,63 @@ def main():
             if scenario_file:
                 csv_data = pd.read_csv(scenario_file)
 
+    if scenario_mode == scenario_mode_random:
+        sample_csv_data = None
+        directory = "./samples"  # Change this to the desired directory path
+        scenario_files = [os.path.splitext(f)[0] for f in os.listdir(
+            directory) if f.endswith(".csv")]
+        scenario_files.sort()
+
+        if "scenario_random" not in st.session_state:
+            st.session_state["scenario_random"] = None
+        scenario_random_label = (
+            "🔴 Select Random Scenario"
+            if st.session_state.get("scenario_random") is None
+            else f"🟢 Selected Scenario: {st.session_state.get('scenario_random')}"
+        )
+        with st.expander(scenario_random_label, expanded=True):
+            st.markdown("""
+              - Select a CSV file for random scenario randomization.
+            """)
+            scenario_random = st.pills(
+                "Presets: ", scenario_files, key="scenario_random")
+            if scenario_random is not None:
+                st.query_params["scenario_random"] = scenario_random
+            elif "scenario_random" in st.query_params:
+                del st.query_params["scenario_random"]
+            scenario_file = f"{directory}/{scenario_random}.csv" if scenario_random is not None else None
+            if scenario_file:
+                sample_csv_data = pd.read_csv(scenario_file)
+
+            sample_size = st.number_input(
+                "Number of markers to randomize", min_value=1, max_value=1000, value=10, step=1)
+            center_lat = st.number_input("Center Latitude", value=37.7749)
+            center_lon = st.number_input(
+                "Center Longitude", value=-122.4194)
+            radius_mi = st.number_input(
+                "Radius (mi)", value=10.0, step=0.1)
+            min_delay = st.number_input(
+                "Minimum Delay (Seconds between click 'Send markers' and Start of scenario)", value=5, step=1)
+            max_delay = st.number_input(
+                "Maximum Delay (Seconds between click 'Send markers' and End of scenario)", value=35, step=1)
+
+        if sample_csv_data is not None:
+            # Randomize selected markers
+            csv_data = sample_csv_data.sample(n=sample_size)
+            random_indices = csv_data.index
+            for idx in random_indices:
+                r = radius_mi * 1609.34 * np.sqrt(np.random.uniform(0, 1))
+                theta = np.random.uniform(0, 2 * np.pi)
+                delta_lat = (r * np.cos(theta)) / 111.0
+                delta_lon = (r * np.sin(theta)) / \
+                    (111.0 * np.cos(np.deg2rad(center_lat)))
+                csv_data.loc[idx, "LATITUDE"] = center_lat + delta_lat
+                csv_data.loc[idx, "LONGITUDE"] = center_lon + delta_lon
+                random_delay = np.random.uniform(min_delay, max_delay)
+                csv_data.loc[idx, "DELAY"] = random_delay
+            csv_data.sort_values(
+                by="DELAY", ascending=True, inplace=True)
+
     if scenario_mode == scenario_mode_custom:
         scenario_upload_label = (
             "🔴 Upload Custom Scenario"
