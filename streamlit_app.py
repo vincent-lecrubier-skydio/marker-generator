@@ -5,9 +5,11 @@ import os
 from datetime import datetime, timedelta
 import pydeck as pdk
 import httpx
+import re
 import asyncio
 import numpy as np
 from typing import List, Dict, Any
+from mapbox_util import forward_geocode
 
 
 def csv_to_json(
@@ -83,6 +85,24 @@ def csv_to_json(
     return markers_data
 
 
+def format_scenario_mode(mode):
+    if mode == "preset":
+        return "⚡️ Preset"
+    if mode == "random":
+        return "🎲 Random"
+    if mode == "custom":
+        return "📄 Custom"
+    return "preset"
+
+
+def parse_lat_lon(s):
+    pattern = r'[-+]?\d*\.\d+|\d+'
+    matches = re.findall(pattern, s)
+    if len(matches) == 2:
+        return float(matches[0]), float(matches[1])
+    return None
+
+
 def main():
     st.set_page_config(page_title="Marker Generator", page_icon="🚨", layout="wide")
 
@@ -90,18 +110,30 @@ def main():
 
     csv_data = None
 
-    scenario_mode_preset = "⚡️ Preset"
-    scenario_mode_random = "🎲 Random"
-    scenario_mode_custom = "📄 Custom"
-
     force_new_markers_ui = False
 
-    scenario_mode = st.segmented_control(
+    if "mode" not in st.session_state:
+        if "mode" in st.query_params:
+            mode_param = st.query_params.get("mode")
+            if mode_param in ["preset", "random", "custom"]:
+                st.session_state["mode"] = mode_param
+            else:
+                st.session_state["mode"] = None
+        else:
+            st.session_state["mode"] = None
+
+    mode = st.segmented_control(
         "Mode:",
-        [scenario_mode_preset, scenario_mode_random, scenario_mode_custom],
-        default=scenario_mode_preset,
+        ["preset", "random", "custom"],
+        format_func=format_scenario_mode,
+        key="mode"
     )
-    if scenario_mode == scenario_mode_preset:
+    if mode is not None:
+        st.query_params["mode"] = mode
+    elif "mode" in st.query_params:
+        del st.query_params["mode"]
+
+    if mode == "preset":
         directory = "./scenarios"  # Change this to the desired rdirectory path
         scenario_files = [
             os.path.splitext(f)[0] for f in os.listdir(directory) if f.endswith(".csv")
@@ -139,45 +171,79 @@ def main():
             if scenario_file:
                 csv_data = pd.read_csv(scenario_file)
 
-    if scenario_mode == scenario_mode_random:
+    if mode == "random":
         sample_csv_data = None
         directory = "./samples"  # Change this to the desired directory path
         scenario_files = [os.path.splitext(f)[0] for f in os.listdir(
             directory) if f.endswith(".csv")]
         scenario_files.sort()
 
-        if "scenario_random" not in st.session_state:
-            st.session_state["scenario_random"] = None
+        if "sample" not in st.session_state:
+            st.session_state["sample"] = None
         scenario_random_label = (
             "🔴 Select Random Scenario"
-            if st.session_state.get("scenario_random") is None
-            else f"🟢 Selected Scenario: {st.session_state.get('scenario_random')}"
+            if st.session_state.get("sample") is None
+            else f"🟢 Selected Scenario: {st.session_state.get('sample')}"
         )
         with st.expander(scenario_random_label, expanded=True):
             st.markdown("""
-              - Select a CSV file for random scenario randomization.
+              - Select a CSV file to sample for random randomization.
             """)
-            scenario_random = st.pills(
-                "Presets: ", scenario_files, key="scenario_random")
-            if scenario_random is not None:
-                st.query_params["scenario_random"] = scenario_random
-            elif "scenario_random" in st.query_params:
-                del st.query_params["scenario_random"]
-            scenario_file = f"{directory}/{scenario_random}.csv" if scenario_random is not None else None
+            sample = st.pills(
+                "Samples: ", scenario_files, key="sample")
+            if sample is not None:
+                st.query_params["sample"] = sample
+            elif "sample" in st.query_params:
+                del st.query_params["sample"]
+            scenario_file = f"{directory}/{sample}.csv" if sample is not None else None
             if scenario_file:
                 sample_csv_data = pd.read_csv(scenario_file)
 
-            sample_size = st.number_input(
-                "Number of markers to randomize", min_value=1, max_value=1000, value=10, step=1)
-            center_lat = st.number_input("Center Latitude", value=37.7749)
-            center_lon = st.number_input(
-                "Center Longitude", value=-122.4194)
+            if "location" not in st.session_state:
+                if "location" in st.query_params:
+                    location_param = st.query_params.get("location")
+                    st.session_state["location"] = location_param
+                else:
+                    st.session_state["location"] = "San Mateo, CA"
+
+            location = st.text_input(
+                "Location Address or Coordinates (lat,lon)", key="location")
+
+            coords = forward_geocode(location)
+
+            center_lat = None
+            center_lon = None
+            if coords:
+                center_lat = coords[1]
+                center_lon = coords[0]
+            else:
+                lat_lon = parse_lat_lon(location)
+                if lat_lon:
+                    center_lat, center_lon = lat_lon
+            if center_lat is None or center_lon is None:
+                st.error(
+                    "Invalid location. Please enter a valid address or coordinates (lat,lon)")
+                del st.query_params["location"]
+                return
+            else:
+                st.query_params["location"] = location
+
+            st.markdown(f"""
+                Location Coordinates:
+
+                ```python
+                {center_lat}, {center_lon}
+                ```
+                """)
+
             radius_mi = st.number_input(
-                "Radius (mi)", value=10.0, step=0.1)
+                "Radius around location (mi)", value=1.0, step=0.1)
+            sample_size = st.number_input(
+                "Number of markers to generate", min_value=1, max_value=1000, value=10, step=1)
             min_delay = st.number_input(
-                "Minimum Delay (Seconds between click 'Send markers' and Start of scenario)", value=5, step=1)
+                "Minimum Delay (Seconds between click 'Send markers' and Start of scenario)", value=0, step=1)
             max_delay = st.number_input(
-                "Maximum Delay (Seconds between click 'Send markers' and End of scenario)", value=35, step=1)
+                "Maximum Delay (Seconds between click 'Send markers' and End of scenario)", value=10, step=1)
 
         if sample_csv_data is not None:
             # Randomize selected markers
@@ -196,7 +262,7 @@ def main():
             csv_data.sort_values(
                 by="DELAY", ascending=True, inplace=True)
 
-    if scenario_mode == scenario_mode_custom:
+    if mode == "custom":
         scenario_upload_label = (
             "🔴 Upload Custom Scenario"
             if st.session_state.get("scenario_uploaded_file") is None

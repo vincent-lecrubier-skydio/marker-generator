@@ -3,3 +3,4 @@ shapely
 numpy
 pyproj
 httpx
+mapbox==0.18.1
