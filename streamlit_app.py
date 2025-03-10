@@ -181,23 +181,40 @@ def main():
     if mode == "random":
         sample_csv_data = None
         directory = "./samples"  # Change this to the desired directory path
-        scenario_files = [os.path.splitext(f)[0] for f in os.listdir(
+        sample_files = [os.path.splitext(f)[0] for f in os.listdir(
             directory) if f.endswith(".csv")]
-        scenario_files.sort()
+        sample_files.sort()
 
         if "sample" not in st.session_state:
-            st.session_state["sample"] = None
+            if "sample" in st.query_params:
+                sample_param = st.query_params.get("sample")
+                if sample_param in sample_files:
+                    st.session_state["sample"] = sample_param
+                else:
+                    st.session_state["sample"] = None
+
+        if "location" not in st.session_state:
+            if "location" in st.query_params:
+                location_param = st.query_params.get("location")
+                st.session_state["location"] = location_param
+            else:
+                st.session_state["location"] = "3000 Clearview way, San Mateo, CA"
+
         scenario_random_label = (
-            "🔴 Select Random Scenario"
+            "🔴 Generate Random Scenario"
             if st.session_state.get("sample") is None
-            else f"🟢 Selected Scenario: {st.session_state.get('sample')}"
+            else f"🟢 Generate Random Scenario: {st.session_state.get('sample')}"
         )
-        with st.expander(scenario_random_label, expanded=True):
+        with st.expander(scenario_random_label, expanded=st.session_state.get(
+                "location") is None or st.session_state.get(
+                "sample") is None):
             st.markdown("""
-              - Select a CSV file to sample for random randomization.
+              - Select one of the categories below to generate random markers
+              - Enter a location around which markers will appear
+              - Customize number of markers, radius and delay parameters if needed
             """)
             sample = st.pills(
-                "Samples: ", scenario_files, key="sample")
+                "Category: ", sample_files, key="sample")
             if sample is not None:
                 st.query_params["sample"] = sample
             elif "sample" in st.query_params:
@@ -205,13 +222,6 @@ def main():
             scenario_file = f"{directory}/{sample}.csv" if sample is not None else None
             if scenario_file:
                 sample_csv_data = pd.read_csv(scenario_file)
-
-            if "location" not in st.session_state:
-                if "location" in st.query_params:
-                    location_param = st.query_params.get("location")
-                    st.session_state["location"] = location_param
-                else:
-                    st.session_state["location"] = "3000 Clearview way, San Mateo, CA"
 
             location = st.text_input(
                 "Location Address or Coordinates (lat,lon)", key="location")
@@ -281,13 +291,13 @@ def main():
             expanded=True,
         ):
             st.markdown("""
-            1. Utilize [this Google Sheets](https://docs.google.com/spreadsheets/d/1Iz7aVcoIcEGnVnqyHDeo-MC9nO6ORBlwpj7QSgHHfVs/edit?gid=0#gid=0) template to create your markers
-            2. "File" > "Download" > "Comma-separated values (.csv, current sheet)"
-            3. Upload file below""")
+            - Utilize [this Google Sheets](https://docs.google.com/spreadsheets/d/1Iz7aVcoIcEGnVnqyHDeo-MC9nO6ORBlwpj7QSgHHfVs/edit?gid=0#gid=0) template to create your markers
+            - "File" > "Download" > "Comma-separated values (.csv, current sheet)"
+            - Upload CSV file below""")
             uploaded_file = st.file_uploader(
                 "", type=["csv"], key="scenario_uploaded_file"
             )
-            force_new_markers_ui = st.checkbox(
+            force_new_markers_ui = st.toggle(
                 "Convert old .csv files automatically to the new markers UI. **Note: In the new UI all incident markers are critical red color.**",
                 key="force_new_markers",
             )
