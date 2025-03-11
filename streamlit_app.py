@@ -148,11 +148,14 @@ def main():
                 scenario_param = st.query_params.get("scenario")
                 if scenario_param in scenario_files:
                     st.session_state["scenario"] = scenario_param
+                elif scenario_param.strip() in scenario_files:
+                    st.session_state["scenario"] = scenario_param.strip()
+                elif scenario_param == "clearview-demo-1":
+                    st.session_state["scenario"] = "1 - Public Safety DFR - HQ Demo"
+                elif scenario_param == "clearview-demo-2":
+                    st.session_state["scenario"] = "1 - Public Safety DFR - HQ Demo"
                 else:
-                    if scenario_param == "clearview-demo-1":
-                        st.session_state["scenario"] = "1 - Public Safety DFR - HQ Demo"
-                    else:
-                        st.session_state["scenario"] = None
+                    st.session_state["scenario"] = None
             else:
                 st.session_state["scenario"] = None
         scenario_preset_label = (
