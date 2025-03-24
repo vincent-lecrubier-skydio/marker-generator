@@ -1,5 +1,5 @@
-GD Note,TYPE,TITLE,DESCRIPTION,LATITUDE,LONGITUDE,DELAY,EXTERNALID,UUID,Desired Altitude,Alert on Map Screen,AR Marker,Coordinates for maps,AREA,CODE,INCIDENT_ID,PRIORITY
-Critical Power Issue,INCIDENT,Switch X123,Customers showing out behind UD Riser Switch X123,37.53286653,-122.3309959,120,,,50 ft,YES,YES,"37.53286653, -122.3309959",Downtown,10-99,INC001,High
-Critical Power Issue,INCIDENT,Switch X124,Low Wire IVO Switch X125,37.53234413,-122.3319647,0,,,50 ft,YES,YES,"37.53234413, -122.3319647",Suburban,10-99,INC002,Medium
-Traffic Incident,INCIDENT,Car hit pole,PD Reports Car hit pole corner of Clearview Way and W Hillsdale Blvd,37.53191423,-122.3329086,130,,,50 ft,YES,YES,"37.53191423, -122.3329086",Downtown,10-99,INC003,High
-Electrical Fault,INCIDENT,Breaker H315 San Mateo,Breaker Operation San Mateo - H315,37.52606869,-122.339062,160,,,50 ft,YES,YES,"37.52606869, -122.339062",Suburban,10-99,INC004,Medium
+TYPE,TITLE,DESCRIPTION,LATITUDE,LONGITUDE,DELAY,EXTERNALID,UUID,Coordinates for maps,AREA,CODE,INCIDENT_ID,PRIORITY
+INCIDENT,Switch X123,Customers showing out behind UD Riser Switch X123,37.53286653,-122.3309959,120,,,"37.53286653, -122.3309959",Downtown,10-99,INC001,High
+INCIDENT,Switch X124,Low Wire IVO Switch X125,37.53234413,-122.3319647,0,,,"37.53234413, -122.3319647",Suburban,10-99,INC002,Medium
+INCIDENT,Car hit pole,PD Reports Car hit pole corner of Clearview Way and W Hillsdale Blvd,37.53191423,-122.3329086,130,,,"37.53191423, -122.3329086",Downtown,10-99,INC003,High
+INCIDENT,Breaker H315 San Mateo,Breaker Operation San Mateo - H315,37.52606869,-122.339062,160,,,"37.52606869, -122.339062",Suburban,10-99,INC004,Medium
