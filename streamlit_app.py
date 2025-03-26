@@ -340,7 +340,7 @@ def main():
             
     # Add marker management tools in a dedicated section
     with st.expander("🗑️ Marker Management", expanded=False):
-        st.markdown("### Delete Latest Markers")
+        st.markdown("### Delete Latest Markers - AXON CEO SUMMIT ONLY CAUTION DO NOT TOUCH")
         st.markdown("Use this tool to delete the most recent markers from the API. This action cannot be undone.")
         
         # Hard-code the number of markers to delete to 25
