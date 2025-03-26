@@ -8,7 +8,7 @@ import httpx
 import re
 import asyncio
 import numpy as np
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from mapbox_util import forward_geocode
 
 
@@ -337,6 +337,148 @@ def main():
             st.query_params["api_token"] = api_token
         elif "api_token" in st.query_params:
             del st.query_params["api_token"]
+            
+    # Add marker management tools in a dedicated section
+    with st.expander("🗑️ Marker Management", expanded=False):
+        st.markdown("### Delete Latest Markers")
+        st.markdown("Use this tool to delete the most recent markers from the API. This action cannot be undone.")
+        
+        # Hard-code the number of markers to delete to 25
+        st.write("This button will delete the 25 most recent markers from the API.")
+        st.markdown("**⚠️ Warning: This action cannot be undone.**")
+        
+        async def fetch_latest_markers(limit: int) -> Tuple[List[Dict[str, Any]], List[str]]:
+            """Fetch the latest markers from the API"""
+            request_url = f"{st.session_state.api_url}/api/v0/markers?limit={limit}"
+            
+            headers = {
+                "Authorization": f"{st.session_state.api_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            
+            error_messages = []
+            markers = []
+            
+            try:
+                async with httpx.AsyncClient() as session:
+                    response = await session.get(request_url, headers=headers)
+                    if response.status_code == 200:
+                        result = response.json()
+                        if result.get("data") and "markers" in result["data"]:
+                            markers = result["data"]["markers"]
+                        else:
+                            error_messages.append("No markers found in the response")
+                    else:
+                        error_messages.append(f"Error fetching markers: {response.text}")
+            except Exception as e:
+                error_messages.append(f"Exception while fetching markers: {str(e)}")
+                
+            return markers, error_messages
+        
+        async def delete_marker(session, marker_id: str, headers: Dict[str, str]) -> str:
+            """Delete a single marker and return any error message"""
+            request_url = f"{st.session_state.api_url}/api/v0/marker/{marker_id}/delete"
+            try:
+                response = await session.delete(request_url, headers=headers)
+                if response.status_code != 200:
+                    return f"Error deleting marker {marker_id}: {response.text}"
+                return ""
+            except Exception as e:
+                return f"Exception while deleting marker {marker_id}: {str(e)}"
+        
+        async def delete_markers_in_batches(markers: List[Dict[str, Any]], batch_size: int = 5, delay_ms: int = 50) -> Tuple[List[str], int]:
+            """Delete markers in batches to avoid overwhelming the API"""
+            headers = {
+                "Authorization": f"{st.session_state.api_token}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            
+            error_messages = []
+            success_count = 0
+            
+            async with httpx.AsyncClient() as session:
+                for i in range(0, len(markers), batch_size):
+                    # Process markers in batches
+                    batch = markers[i:i+batch_size]
+                    batch_tasks = []
+                    
+                    for marker in batch:
+                        if "uuid" in marker and marker["uuid"]:
+                            batch_tasks.append(delete_marker(session, marker["uuid"], headers))
+                    
+                    # Process each batch concurrently
+                    batch_results = await asyncio.gather(*batch_tasks)
+                    
+                    # Count successes and collect errors
+                    for result in batch_results:
+                        if result:
+                            error_messages.append(result)
+                        else:
+                            success_count += 1
+                    
+                    # Small delay between batches to avoid overwhelming the API
+                    if i + batch_size < len(markers):
+                        await asyncio.sleep(delay_ms / 1000)
+                    
+                    # Update progress
+                    progress_text = f"Deleted {success_count} of {len(markers)} markers..."
+                    st.session_state.delete_progress.progress((i + len(batch)) / len(markers), text=progress_text)
+            
+            return error_messages, success_count
+            
+        async def delete_latest_markers(limit_count: int):
+            """Fetch and delete the latest markers"""
+            # Initialize progress bar
+            if 'delete_progress' not in st.session_state:
+                st.session_state.delete_progress = st.progress(0, text="Fetching latest markers...")
+            else:
+                st.session_state.delete_progress.progress(0, text="Fetching latest markers...")
+                
+            # Use the directly passed limit value instead of session state
+            limit = limit_count
+            batch_size = min(5, limit)  # Use smaller batches for larger limits
+            
+            # Step 1: Fetch the latest markers with explicit limit
+            st.write(f"Fetching {limit} latest markers...")
+            markers, fetch_errors = await fetch_latest_markers(limit=limit)
+            
+            if fetch_errors:
+                for error in fetch_errors:
+                    st.error(error)
+                st.session_state.delete_progress.progress(1.0, text="Failed to fetch markers")
+                return
+            
+            if not markers:
+                st.warning("No markers found to delete")
+                st.session_state.delete_progress.progress(1.0, text="No markers found")
+                return
+                
+            st.session_state.delete_progress.progress(0.2, text=f"Found {len(markers)} markers to delete")
+            
+            # Step 2: Delete the markers in batches
+            delete_errors, success_count = await delete_markers_in_batches(markers, batch_size)
+            
+            # Step 3: Display results
+            if delete_errors:
+                st.error(f"Deleted {success_count} markers, but encountered {len(delete_errors)} errors:")
+                for error in delete_errors[:5]:  # Show first 5 errors
+                    st.error(error)
+                if len(delete_errors) > 5:
+                    st.error(f"... and {len(delete_errors) - 5} more errors (not shown)")
+                    
+                if any("Invalid Authorization header" in s for s in delete_errors):
+                    st.info("Advice: Please check your API Token and make sure it is correct.")
+            else:
+                st.success(f"Successfully deleted {success_count} markers!")
+                
+            st.session_state.delete_progress.progress(1.0, text=f"Completed: Deleted {success_count} markers")
+
+        # Simple button to delete exactly 25 markers
+        if st.button("🗑️ Delete Latest 25 Markers"):
+            # Always use 25 as the limit
+            asyncio.run(delete_latest_markers(25))
 
     if csv_data is not None:
         with st.expander("📄 Toolbox", expanded=False):
@@ -472,10 +614,10 @@ def main():
             return None
 
         async def send_markers():
-            request_url = f"{api_url}/api/v0/marker"
+            request_url = f"{st.session_state.api_url}/api/v0/marker"
 
             headers = {
-                "Authorization": f"{api_token}",
+                "Authorization": f"{st.session_state.api_token}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             }
@@ -507,6 +649,7 @@ def main():
             else:
                 st.success("All markers uploaded successfully!")
 
+        # Add a single Send Markers button at the bottom of the toolbox
         if st.button("🚨 Send Markers!"):
             asyncio.run(send_markers())
 
