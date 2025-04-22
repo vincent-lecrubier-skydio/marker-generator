@@ -533,7 +533,9 @@ def main():
 
                 # Assign color based on type
                 def get_color(marker_type):
-                    if "High" in marker_type:
+                    if not isinstance(marker_type, str):
+                        return [255, 0, 0, 160]
+                    elif "High" in marker_type:
                         return [255, 0, 0, 160]  # Red for critical
                     elif "Medium" in marker_type:
                         return [255, 165, 0, 160]  # Orange for serious
