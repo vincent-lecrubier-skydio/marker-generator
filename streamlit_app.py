@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+from dotenv import load_dotenv
+load_dotenv()
 from datetime import datetime, timedelta
 import pydeck as pdk
 import httpx
@@ -94,6 +96,8 @@ def format_scenario_mode(mode):
         return "🎲 Random"
     if mode == "custom":
         return "📄 Custom"
+    if mode == "tailored":
+        return "🧠 Tailored"
     return "preset"
 
 
@@ -118,7 +122,7 @@ def main():
     if "mode" not in st.session_state:
         if "mode" in st.query_params:
             mode_param = st.query_params.get("mode")
-            if mode_param in ["preset", "random", "custom"]:
+            if mode_param in ["preset", "random", "custom", "tailored"]:
                 st.session_state["mode"] = mode_param
             else:
                 st.session_state["mode"] = "preset"
@@ -127,7 +131,7 @@ def main():
 
     mode = st.segmented_control(
         "Mode:",
-        ["preset", "random", "custom"],
+        ["preset", "random", "custom", "tailored"],
         format_func=format_scenario_mode,
         key="mode"
     )
@@ -308,6 +312,38 @@ def main():
             if scenario_file:
                 csv_data = pd.read_csv(scenario_file)
 
+    if mode == "tailored":
+        from io import StringIO
+
+     # Red/green label is based on whether something was pasted
+        pasted_csv_raw = st.session_state.get("tailored_pasted_csv")
+        pasted_csv = pasted_csv_raw.strip() if pasted_csv_raw else ""
+
+        scenario_upload_label = (
+        "🔴 Paste Tailored Markers"
+        if not pasted_csv
+        else "🟢 Tailored Markers Pasted"
+     )
+
+        with st.expander(scenario_upload_label, expanded=True):
+            st.markdown("""
+            - Prompt [**MarkerGPT**](https://chatgpt.com/g/g-68236757a7bc81918bfb9ce45311524d-famarkers-generator) to generate markers for an agency of your choosing:  
+            """)
+
+            st.text_area(
+            " Copy the csv output and paste it below:",  
+            height=200,
+            key="tailored_pasted_csv"  # This is now the magic key
+            )
+
+            if pasted_csv:
+                try:
+                    from io import StringIO
+                    csv_data = pd.read_csv(StringIO(pasted_csv))
+                    st.success("CSV loaded successfully!")
+                except Exception as e:
+                    st.error(f"Error reading CSV: {e}")
+ 
     if "api_url" not in st.session_state:
         if "api_url" in st.query_params:
             st.session_state["api_url"] = st.query_params.get("api_url")
@@ -498,6 +534,31 @@ def main():
                 st.data_editor(csv_data)
 
             # Convert CSV to JSON
+            if "LATITUDE" not in csv_data.columns and "ADDRESS" in csv_data.columns:
+               
+
+                with st.spinner("Converting addresses to coordinates..."):
+
+                    center_lat_list = []
+                    center_lon_list = []
+
+                    for index, row in csv_data.iterrows():
+                        address = row["ADDRESS"]
+                        coords = forward_geocode(address)
+                        lat, lon = None, None
+                        if coords:
+                            lat = coords[1]
+                            lon = coords[0]
+                        else:
+                            latlon = parse_lat_lon(address)
+                            if latlon:
+                                lat, lon = latlon   
+                        center_lat_list.append(lat)
+                        center_lon_list.append(lon) 
+                    csv_data["LATITUDE"] = center_lat_list
+                    csv_data["LONGITUDE"] = center_lon_list
+                    csv_data = csv_data.dropna(subset=["LATITUDE", "LONGITUDE"])
+                st.success("Addresses converted to coordinates.")
             markers_json = csv_to_json(csv_data, force_new_markers_ui)
 
             # Collapsible section for the generated JSON (collapsed by default)
