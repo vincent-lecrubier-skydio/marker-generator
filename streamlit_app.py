@@ -2,15 +2,55 @@ import streamlit as st
 import pandas as pd
 import json
 import os
+import openai 
+from openai import OpenAI 
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) 
 from io import StringIO
 from datetime import datetime, timedelta
 import pydeck as pdk
 import httpx
-import re
+import openai
 import asyncio
 import numpy as np
 from typing import List, Dict, Any, Tuple
 from mapbox_util import forward_geocode
+from real_agencies import get_random_agency
+import re
+
+def render_gpt_output(result: str):
+    import re
+
+    st.markdown("### 🤖 AI Overview")
+
+    # Extract main content blocks
+    anchor = re.search(r"\*\*RESPONSE ANCHOR\*\*\s*(.*?)\n\n", result, re.DOTALL)
+    overview = re.search(r"\*\*AGENCY OVERVIEW\*\*\s*(.*?)\n\n", result, re.DOTALL)
+    csv_block = re.search(r"```csv\s*\n(.*?)```", result, re.DOTALL)
+
+    # Location section
+    if anchor:
+        st.markdown("#### 📍 Location")
+        st.markdown(anchor.group(1).strip())
+
+    # Agency overview with inline stat highlighting
+    if overview:
+        st.markdown("#### 🏢 Agency")
+
+        full_text = overview.group(1).strip()
+
+        # Inline highlighting of structured data
+        full_text = re.sub(r"(\d{2,5})\s+sworn\s+(?:officers|personnel)", r"**\1 sworn officers**", full_text, flags=re.IGNORECASE)
+        full_text = re.sub(r"(?:population|pop\.?)\s+(?:served|covered).*?(\d[\d,]*)", r"**Population: \1**", full_text, flags=re.IGNORECASE)
+        full_text = re.sub(r"(?:land area|covers|serves).*?(\d{1,5}) ?(?:sq\.?|square)? ?mi", r"**Land Area: \1 sq mi**", full_text, flags=re.IGNORECASE)
+        full_text = re.sub(r"(drone program|uas).*?(yes|no|exploring|unknown|not reported)", r"**Drone Program: \2**", full_text, flags=re.IGNORECASE)
+
+        st.markdown(full_text)
+
+    # CSV incident output
+    if csv_block:
+        st.markdown("#### 📄 Incidents")
+        st.code(csv_block.group(1).strip(), language="csv")
+
 
 
 def csv_to_json(
@@ -95,8 +135,8 @@ def format_scenario_mode(mode):
         return "🎲 Random"
     if mode == "custom":
         return "📄 Custom"
-    if mode == "tailored":
-        return "🧠 Tailored"
+    if mode == "precision_drop":
+        return "📍 Precision Drop"
     return "preset"
 
 
@@ -121,7 +161,7 @@ def main():
     if "mode" not in st.session_state:
         if "mode" in st.query_params:
             mode_param = st.query_params.get("mode")
-            if mode_param in ["preset", "random", "custom", "tailored"]:
+            if mode_param in ["preset", "random", "custom", "precision_drop"]:
                 st.session_state["mode"] = mode_param
             else:
                 st.session_state["mode"] = "preset"
@@ -130,7 +170,7 @@ def main():
 
     mode = st.segmented_control(
         "Mode:",
-        ["preset", "random", "custom", "tailored"],
+        ["preset", "random", "custom", "precision_drop"],
         format_func=format_scenario_mode,
         key="mode"
     )
@@ -311,58 +351,94 @@ def main():
             if scenario_file:
                 csv_data = pd.read_csv(scenario_file)
 
-    if mode == "tailored":
-        pasted_csv = st.session_state.get("tailored_pasted_csv", "").strip()
-        scenario_upload_label = (
-            "🔴 Paste Tailored Markers"
-            if not pasted_csv
-            else "🟢 Tailored Markers Pasted"
+    if mode == "precision_drop":
+        st.markdown("<p style='font-size:16px; color:gray;'>Generate ultra-realistic incident markers for any public safety agency — with real addresses, local relevance, and drone-suited scenarios. </p>", unsafe_allow_html=True)
+
+        st.markdown("### Select an agency to generate markers for:")
+
+        # Randomize first
+        if st.button("🎲 Pick Random Agency"):
+            st.session_state["agency_name"] = get_random_agency()
+            st.rerun()
+
+
+        # Then display the input
+        agency_name = st.text_input(
+            "### Enter an Agency:",
+            key="agency_name"
         )
-        with st.expander(
-            scenario_upload_label, 
-            expanded=True
-        ):
-            st.markdown("""
-            - Prompt [**MarkerGPT**](https://chatgpt.com/g/g-68236757a7bc81918bfb9ce45311524d-famarkers-generator) to generate markers for an agency of your choosing:
-            """)
-            pasted_csv = st.text_area(
-                "Copy the CSV output and paste it below:",
-                height=200,
-                key="tailored_pasted_csv"
-            ).strip()
-            if pasted_csv:
-                try:
-                    csv_data = pd.read_csv(StringIO(pasted_csv))
-                    st.success("CSV loaded successfully!")
-                except Exception as e:
-                    st.error(f"Error reading CSV: {e}")
-                    csv_data = None
 
-                if csv_data is not None and "LATITUDE" not in csv_data.columns and "ADDRESS" in csv_data.columns:
-                    with st.spinner("Converting addresses to coordinates..."):
-                        center_lat_list = []
-                        center_lon_list = []
+        anchor_location = st.text_input("OPTIONAL: Pre-select your dock Location (address or lat/long)", "")
 
-                        for index, row in csv_data.iterrows():
-                            address = row["ADDRESS"]
-                            coords = forward_geocode(address)
-                            lat, lon = None, None
-                            if coords:
-                                lat = coords[1]
-                                lon = coords[0]
-                            else:
-                                latlon = parse_lat_lon(address)
-                                if latlon:
-                                    lat, lon = latlon
+        scenario_upload_label = (
+            f"🟢" if agency_name.strip()
+            else "🔴 Enter a Public Safety Agency to generate markers"
+        )
 
-                            center_lat_list.append(lat)
-                            center_lon_list.append(lon)
+        with st.expander(scenario_upload_label, expanded=True):
+            if st.button("## 🧠 Generate Markers via OpenAI"):
+                with st.spinner("Generating 10 markers in a ~2mi radius to dock"):
+                    try:
+                        # Load system prompt
+                        with open("source_text.txt", "r", encoding="utf-8") as f:
+                            system_prompt = f.read()
 
-                    csv_data["LATITUDE"] = center_lat_list
-                    csv_data["LONGITUDE"] = center_lon_list
-                    csv_data = csv_data.dropna(subset=["LATITUDE", "LONGITUDE"])
-                    st.success("Addresses converted to coordinates.")
- 
+                        # Construct user prompt
+                        user_prompt = f"Agency: {agency_name}"
+                        if anchor_location.strip():
+                            user_prompt += f"\nAnchor Location: {anchor_location.strip()}"
+
+                        # Call GPT
+                        response = client.chat.completions.create(
+                            model="gpt-4o",  
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            temperature=0.3
+                        )
+
+                        result = response.choices[0].message.content
+                        render_gpt_output(result)
+
+                        # Extract CSV from code block
+                        import re
+                        match = re.search(r"```csv\s*\n(.*?)```", result, re.DOTALL | re.IGNORECASE)
+                        if not match:
+                            match = re.search(r"```\s*\n(.*?)```", result, re.DOTALL)
+
+                        if not match:
+                            raise ValueError("Could not find a valid CSV code block in GPT output.")
+
+                        csv_text = match.group(1).strip()
+                        st.session_state["tailored_pasted_csv"] = csv_text  # optional: keep for manual edits
+
+                        # ✅ Parse CSV directly into DataFrame
+                        from io import StringIO
+                        csv_data = pd.read_csv(StringIO(csv_text))
+                        st.success("CSV loaded successfully!")
+
+                        # ✅ Geocode if needed
+                        if "LATITUDE" not in csv_data.columns and "ADDRESS" in csv_data.columns:
+                            with st.spinner("Converting addresses to coordinates..."):
+                                lat_list = []
+                                lon_list = []
+                                for address in csv_data["ADDRESS"]:
+                                    coords = forward_geocode(address)
+                                    if coords:
+                                        lon, lat = coords
+                                    else:
+                                        lon, lat = None, None
+                                    lat_list.append(lat)
+                                    lon_list.append(lon)
+                                csv_data["LATITUDE"] = lat_list
+                                csv_data["LONGITUDE"] = lon_list
+                                csv_data.dropna(subset=["LATITUDE", "LONGITUDE"], inplace=True)
+
+
+                    except Exception as e:
+                        st.error(f"Failed to generate scenario: {e}")
+
     if "api_url" not in st.session_state:
         if "api_url" in st.query_params:
             st.session_state["api_url"] = st.query_params.get("api_url")
