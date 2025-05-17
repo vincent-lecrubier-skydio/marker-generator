@@ -1,30 +1,31 @@
+import re
+from real_agencies import get_random_agency
+from mapbox_util import forward_geocode
+from typing import List, Dict, Any, Tuple
+import numpy as np
+import asyncio
+import re
+import httpx
+import pydeck as pdk
+from datetime import datetime, timedelta
+from io import StringIO
 import streamlit as st
 import pandas as pd
+from io import StringIO
 import json
 import os
-import openai 
-from openai import OpenAI 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) 
-from io import StringIO
-from datetime import datetime, timedelta
-import pydeck as pdk
-import httpx
-import openai
-import asyncio
-import numpy as np
-from typing import List, Dict, Any, Tuple
-from mapbox_util import forward_geocode
-from real_agencies import get_random_agency
-import re
+from openai import OpenAI
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 def render_gpt_output(result: str):
-    import re
-
     st.markdown("### 🤖 AI Overview")
 
     # Extract main content blocks
-    anchor = re.search(r"\*\*RESPONSE ANCHOR\*\*\s*(.*?)\n\n", result, re.DOTALL)
-    overview = re.search(r"\*\*AGENCY OVERVIEW\*\*\s*(.*?)\n\n", result, re.DOTALL)
+    anchor = re.search(
+        r"\*\*RESPONSE ANCHOR\*\*\s*(.*?)\n\n", result, re.DOTALL)
+    overview = re.search(
+        r"\*\*AGENCY OVERVIEW\*\*\s*(.*?)\n\n", result, re.DOTALL)
     csv_block = re.search(r"```csv\s*\n(.*?)```", result, re.DOTALL)
 
     # Location section
@@ -39,10 +40,14 @@ def render_gpt_output(result: str):
         full_text = overview.group(1).strip()
 
         # Inline highlighting of structured data
-        full_text = re.sub(r"(\d{2,5})\s+sworn\s+(?:officers|personnel)", r"**\1 sworn officers**", full_text, flags=re.IGNORECASE)
-        full_text = re.sub(r"(?:population|pop\.?)\s+(?:served|covered).*?(\d[\d,]*)", r"**Population: \1**", full_text, flags=re.IGNORECASE)
-        full_text = re.sub(r"(?:land area|covers|serves).*?(\d{1,5}) ?(?:sq\.?|square)? ?mi", r"**Land Area: \1 sq mi**", full_text, flags=re.IGNORECASE)
-        full_text = re.sub(r"(drone program|uas).*?(yes|no|exploring|unknown|not reported)", r"**Drone Program: \2**", full_text, flags=re.IGNORECASE)
+        full_text = re.sub(r"(\d{2,5})\s+sworn\s+(?:officers|personnel)",
+                           r"**\1 sworn officers**", full_text, flags=re.IGNORECASE)
+        full_text = re.sub(
+            r"(?:population|pop\.?)\s+(?:served|covered).*?(\d[\d,]*)", r"**Population: \1**", full_text, flags=re.IGNORECASE)
+        full_text = re.sub(
+            r"(?:land area|covers|serves).*?(\d{1,5}) ?(?:sq\.?|square)? ?mi", r"**Land Area: \1 sq mi**", full_text, flags=re.IGNORECASE)
+        full_text = re.sub(r"(drone program|uas).*?(yes|no|exploring|unknown|not reported)",
+                           r"**Drone Program: \2**", full_text, flags=re.IGNORECASE)
 
         st.markdown(full_text)
 
@@ -50,7 +55,6 @@ def render_gpt_output(result: str):
     if csv_block:
         st.markdown("#### 📄 Incidents")
         st.code(csv_block.group(1).strip(), language="csv")
-
 
 
 def csv_to_json(
@@ -135,8 +139,8 @@ def format_scenario_mode(mode):
         return "🎲 Random"
     if mode == "custom":
         return "📄 Custom"
-    if mode == "precision_drop":
-        return "📍 Precision Drop"
+    if mode == "ai":
+        return "🧠 AI Generated"
     return "preset"
 
 
@@ -161,7 +165,7 @@ def main():
     if "mode" not in st.session_state:
         if "mode" in st.query_params:
             mode_param = st.query_params.get("mode")
-            if mode_param in ["preset", "random", "custom", "precision_drop"]:
+            if mode_param in ["preset", "random", "custom", "ai"]:
                 st.session_state["mode"] = mode_param
             else:
                 st.session_state["mode"] = "preset"
@@ -170,7 +174,7 @@ def main():
 
     mode = st.segmented_control(
         "Mode:",
-        ["preset", "random", "custom", "precision_drop"],
+        ["preset", "random", "custom", "ai"],
         format_func=format_scenario_mode,
         key="mode"
     )
@@ -327,13 +331,13 @@ def main():
                 by="DELAY", ascending=True, inplace=True)
 
     if mode == "custom":
-        scenario_upload_label = (
+        ai_generation_label = (
             "🔴 Upload Custom Scenario"
             if st.session_state.get("scenario_uploaded_file") is None
             else "🟢 Upload Custom Scenario: Ok"
         )
         with st.expander(
-            scenario_upload_label,
+            ai_generation_label,
             expanded=True,
         ):
             st.markdown("""
@@ -351,32 +355,39 @@ def main():
             if scenario_file:
                 csv_data = pd.read_csv(scenario_file)
 
-    if mode == "precision_drop":
-        st.markdown("<p style='font-size:16px; color:gray;'>Generate ultra-realistic incident markers for any public safety agency — with real addresses, local relevance, and drone-suited scenarios. </p>", unsafe_allow_html=True)
-
-        st.markdown("### Select an agency to generate markers for:")
-
-        # Randomize first
-        if st.button("🎲 Pick Random Agency"):
-            st.session_state["agency_name"] = get_random_agency()
-            st.rerun()
-
-
-        # Then display the input
-        agency_name = st.text_input(
-            "### Enter an Agency:",
-            key="agency_name"
+    if mode == "ai":
+        if "agency_name" not in st.session_state:
+            if "agency_name" in st.query_params:
+                agency_name_param = st.query_params.get("agency_name")
+                st.session_state["agency_name"] = agency_name_param
+        ai_generation_label = (
+            "🔴 Generate scenario with AI"
+            if st.session_state.get("scenario_uploaded_file") is None
+            else "🟢 Generate scenario with AI: Ok"
         )
+        with st.expander(ai_generation_label, expanded=True):
 
-        anchor_location = st.text_input("OPTIONAL: Pre-select your dock Location (address or lat/long)", "")
+            # st.markdown("### Select an agency to generate markers for:")
 
-        scenario_upload_label = (
-            f"🟢" if agency_name.strip()
-            else "🔴 Enter a Public Safety Agency to generate markers"
-        )
+            # Randomize first
+            if st.button("🎲 Pick Random Agency"):
+                st.session_state["agency_name"] = get_random_agency()
+                st.rerun()
 
-        with st.expander(scenario_upload_label, expanded=True):
-            if st.button("## 🧠 Generate Markers via OpenAI"):
+            # Then display the input
+            agency_name = st.text_input(
+                "Enter an Agency:",
+                key="agency_name"
+            )
+            if agency_name is not None:
+                st.query_params["agency_name"] = agency_name
+            elif "agency_name" in st.query_params:
+                del st.query_params["agency_name"]
+
+            anchor_location = st.text_input(
+                "Optional: Pre-select your dock Location (address or lat/long)", "")
+
+            if st.button("🧠 Generate Markers via OpenAI"):
                 with st.spinner("Generating 10 markers in a ~2mi radius to dock"):
                     try:
                         # Load system prompt
@@ -390,7 +401,7 @@ def main():
 
                         # Call GPT
                         response = client.chat.completions.create(
-                            model="gpt-4o",  
+                            model="gpt-4o",
                             messages=[
                                 {"role": "system", "content": system_prompt},
                                 {"role": "user", "content": user_prompt}
@@ -402,21 +413,23 @@ def main():
                         render_gpt_output(result)
 
                         # Extract CSV from code block
-                        import re
-                        match = re.search(r"```csv\s*\n(.*?)```", result, re.DOTALL | re.IGNORECASE)
+
+                        match = re.search(
+                            r"```csv\s*\n(.*?)```", result, re.DOTALL | re.IGNORECASE)
                         if not match:
-                            match = re.search(r"```\s*\n(.*?)```", result, re.DOTALL)
+                            match = re.search(
+                                r"```\s*\n(.*?)```", result, re.DOTALL)
 
                         if not match:
-                            raise ValueError("Could not find a valid CSV code block in GPT output.")
+                            raise ValueError(
+                                "Could not find a valid CSV code block in GPT output.")
 
                         csv_text = match.group(1).strip()
-                        st.session_state["tailored_pasted_csv"] = csv_text  # optional: keep for manual edits
+                        # optional: keep for manual edits
+                        st.session_state["tailored_pasted_csv"] = csv_text
 
                         # ✅ Parse CSV directly into DataFrame
-                        from io import StringIO
                         csv_data = pd.read_csv(StringIO(csv_text))
-                        st.success("CSV loaded successfully!")
 
                         # ✅ Geocode if needed
                         if "LATITUDE" not in csv_data.columns and "ADDRESS" in csv_data.columns:
@@ -433,8 +446,10 @@ def main():
                                     lon_list.append(lon)
                                 csv_data["LATITUDE"] = lat_list
                                 csv_data["LONGITUDE"] = lon_list
-                                csv_data.dropna(subset=["LATITUDE", "LONGITUDE"], inplace=True)
+                                csv_data.dropna(
+                                    subset=["LATITUDE", "LONGITUDE"], inplace=True)
 
+                        st.success("Scenario generated successfully!")
 
                     except Exception as e:
                         st.error(f"Failed to generate scenario: {e}")
@@ -468,29 +483,27 @@ def main():
             st.query_params["api_token"] = api_token
         elif "api_token" in st.query_params:
             del st.query_params["api_token"]
-            
+
     # Add marker management tools in a dedicated section
     with st.expander("🗑️ Marker Management", expanded=False):
-        st.markdown("### Delete Latest Markers - AXON CEO SUMMIT ONLY CAUTION DO NOT TOUCH")
-        st.markdown("Use this tool to delete the most recent markers from the API. This action cannot be undone.")
-        
-        # Hard-code the number of markers to delete to 25
-        st.write("This button will delete the 25 most recent markers from the API.")
-        st.markdown("**⚠️ Warning: This action cannot be undone.**")
-        
+        st.markdown(
+            "Use this tool to delete the most recent markers in the organization. This button will delete the 10 most recent markers from the API. This action cannot be undone.")
+
+        st.warning("⚠️ Warning: This action cannot be undone.")
+
         async def fetch_latest_markers(limit: int) -> Tuple[List[Dict[str, Any]], List[str]]:
             """Fetch the latest markers from the API"""
             request_url = f"{st.session_state.api_url}/api/v0/markers?limit={limit}"
-            
+
             headers = {
                 "Authorization": f"{st.session_state.api_token}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             }
-            
+
             error_messages = []
             markers = []
-            
+
             try:
                 async with httpx.AsyncClient() as session:
                     response = await session.get(request_url, headers=headers)
@@ -499,14 +512,17 @@ def main():
                         if result.get("data") and "markers" in result["data"]:
                             markers = result["data"]["markers"]
                         else:
-                            error_messages.append("No markers found in the response")
+                            error_messages.append(
+                                "No markers found in the response")
                     else:
-                        error_messages.append(f"Error fetching markers: {response.text}")
+                        error_messages.append(
+                            f"Error fetching markers: {response.text}")
             except Exception as e:
-                error_messages.append(f"Exception while fetching markers: {str(e)}")
-                
+                error_messages.append(
+                    f"Exception while fetching markers: {str(e)}")
+
             return markers, error_messages
-        
+
         async def delete_marker(session, marker_id: str, headers: Dict[str, str]) -> str:
             """Delete a single marker and return any error message"""
             request_url = f"{st.session_state.api_url}/api/v0/marker/{marker_id}/delete"
@@ -517,7 +533,7 @@ def main():
                 return ""
             except Exception as e:
                 return f"Exception while deleting marker {marker_id}: {str(e)}"
-        
+
         async def delete_markers_in_batches(markers: List[Dict[str, Any]], batch_size: int = 5, delay_ms: int = 50) -> Tuple[List[str], int]:
             """Delete markers in batches to avoid overwhelming the API"""
             headers = {
@@ -525,91 +541,102 @@ def main():
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             }
-            
+
             error_messages = []
             success_count = 0
-            
+
             async with httpx.AsyncClient() as session:
                 for i in range(0, len(markers), batch_size):
                     # Process markers in batches
                     batch = markers[i:i+batch_size]
                     batch_tasks = []
-                    
+
                     for marker in batch:
                         if "uuid" in marker and marker["uuid"]:
-                            batch_tasks.append(delete_marker(session, marker["uuid"], headers))
-                    
+                            batch_tasks.append(delete_marker(
+                                session, marker["uuid"], headers))
+
                     # Process each batch concurrently
                     batch_results = await asyncio.gather(*batch_tasks)
-                    
+
                     # Count successes and collect errors
                     for result in batch_results:
                         if result:
                             error_messages.append(result)
                         else:
                             success_count += 1
-                    
+
                     # Small delay between batches to avoid overwhelming the API
                     if i + batch_size < len(markers):
                         await asyncio.sleep(delay_ms / 1000)
-                    
+
                     # Update progress
                     progress_text = f"Deleted {success_count} of {len(markers)} markers..."
-                    st.session_state.delete_progress.progress((i + len(batch)) / len(markers), text=progress_text)
-            
+                    st.session_state.delete_progress.progress(
+                        (i + len(batch)) / len(markers), text=progress_text)
+
             return error_messages, success_count
-            
+
         async def delete_latest_markers(limit_count: int):
             """Fetch and delete the latest markers"""
             # Initialize progress bar
             if 'delete_progress' not in st.session_state:
-                st.session_state.delete_progress = st.progress(0, text="Fetching latest markers...")
+                st.session_state.delete_progress = st.progress(
+                    0, text="Fetching latest markers...")
             else:
-                st.session_state.delete_progress.progress(0, text="Fetching latest markers...")
-                
+                st.session_state.delete_progress.progress(
+                    0, text="Fetching latest markers...")
+
             # Use the directly passed limit value instead of session state
             limit = limit_count
             batch_size = min(5, limit)  # Use smaller batches for larger limits
-            
+
             # Step 1: Fetch the latest markers with explicit limit
             st.write(f"Fetching {limit} latest markers...")
             markers, fetch_errors = await fetch_latest_markers(limit=limit)
-            
+
             if fetch_errors:
                 for error in fetch_errors:
                     st.error(error)
-                st.session_state.delete_progress.progress(1.0, text="Failed to fetch markers")
+                st.session_state.delete_progress.progress(
+                    1.0, text="Failed to fetch markers")
                 return
-            
+
             if not markers:
                 st.warning("No markers found to delete")
-                st.session_state.delete_progress.progress(1.0, text="No markers found")
+                st.session_state.delete_progress.progress(
+                    1.0, text="No markers found")
                 return
-                
-            st.session_state.delete_progress.progress(0.2, text=f"Found {len(markers)} markers to delete")
-            
+
+            st.session_state.delete_progress.progress(
+                0.2, text=f"Found {len(markers)} markers to delete")
+
             # Step 2: Delete the markers in batches
             delete_errors, success_count = await delete_markers_in_batches(markers, batch_size)
-            
+
             # Step 3: Display results
             if delete_errors:
-                st.error(f"Deleted {success_count} markers, but encountered {len(delete_errors)} errors:")
+                st.error(
+                    f"Deleted {success_count} markers, but encountered {len(delete_errors)} errors:")
                 for error in delete_errors[:5]:  # Show first 5 errors
                     st.error(error)
                 if len(delete_errors) > 5:
-                    st.error(f"... and {len(delete_errors) - 5} more errors (not shown)")
-                    
+                    st.error(
+                        f"... and {len(delete_errors) - 5} more errors (not shown)")
+
                 if any("Invalid Authorization header" in s for s in delete_errors):
-                    st.info("Advice: Please check your API Token and make sure it is correct.")
+                    st.info(
+                        "Advice: Please check your API Token and make sure it is correct.")
             else:
                 st.success(f"Successfully deleted {success_count} markers!")
-                
-            st.session_state.delete_progress.progress(1.0, text=f"Completed: Deleted {success_count} markers")
 
-        # Simple button to delete exactly 25 markers
-        if st.button("🗑️ Delete Latest 25 Markers"):
-            # Always use 25 as the limit
-            asyncio.run(delete_latest_markers(25))
+            st.session_state.delete_progress.progress(
+                1.0, text=f"Completed: Deleted {success_count} markers")
+
+        # Simple button to delete exactly 10 markers
+        if st.button("🗑️ Delete Latest 10 Markers"):
+            # Always use 10 as the limit
+            asyncio.run(delete_latest_markers(10))
 
     if csv_data is not None:
         with st.expander("📄 Toolbox", expanded=False):
@@ -747,18 +774,21 @@ def main():
             return None
 
         async def send_markers():
+            print("OK1")
             request_url = f"{st.session_state.api_url}/api/v0/marker"
-
+            print("OK2")
             headers = {
                 "Authorization": f"{st.session_state.api_token}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             }
             error_messages = []
-
+            print("OK3")
             async with httpx.AsyncClient() as session:
                 tasks = []
                 for i, marker in enumerate(markers_json):
+                    print(f"OK3 {i}")
+                    st.text(f"Sending marker {i}")
                     tasks.append(send_marker(
                         session, request_url, headers, marker, i))
                 results = await asyncio.gather(*tasks)
@@ -768,6 +798,7 @@ def main():
                     error_messages.append(result)
 
             if error_messages:
+                print("NOK1")
                 st.error(
                     "Errors occurred during the upload:\n\n" +
                     "\n".join(error_messages)
@@ -780,10 +811,12 @@ def main():
                     st.warning(
                         "Advice: Please check the markers data and try again.")
             else:
+                print("OK100")
                 st.success("All markers uploaded successfully!")
 
         # Add a single Send Markers button at the bottom of the toolbox
         if st.button("🚨 Send Markers!"):
+            print("YOOOO1")
             asyncio.run(send_markers())
 
 
