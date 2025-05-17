@@ -449,10 +449,15 @@ def main():
                                 csv_data.dropna(
                                     subset=["LATITUDE", "LONGITUDE"], inplace=True)
 
+                        st.session_state["ai_generated_csv_data"] = csv_data
                         st.success("Scenario generated successfully!")
 
                     except Exception as e:
+                        del st.session_state["ai_generated_csv_data"]
                         st.error(f"Failed to generate scenario: {e}")
+
+            if "ai_generated_csv_data" in st.session_state:
+                csv_data = st.session_state["ai_generated_csv_data"]
 
     if "api_url" not in st.session_state:
         if "api_url" in st.query_params:
@@ -774,21 +779,16 @@ def main():
             return None
 
         async def send_markers():
-            print("OK1")
             request_url = f"{st.session_state.api_url}/api/v0/marker"
-            print("OK2")
             headers = {
                 "Authorization": f"{st.session_state.api_token}",
                 "Content-Type": "application/json",
                 "Accept": "application/json",
             }
             error_messages = []
-            print("OK3")
             async with httpx.AsyncClient() as session:
                 tasks = []
                 for i, marker in enumerate(markers_json):
-                    print(f"OK3 {i}")
-                    st.text(f"Sending marker {i}")
                     tasks.append(send_marker(
                         session, request_url, headers, marker, i))
                 results = await asyncio.gather(*tasks)
@@ -798,7 +798,6 @@ def main():
                     error_messages.append(result)
 
             if error_messages:
-                print("NOK1")
                 st.error(
                     "Errors occurred during the upload:\n\n" +
                     "\n".join(error_messages)
@@ -811,12 +810,10 @@ def main():
                     st.warning(
                         "Advice: Please check the markers data and try again.")
             else:
-                print("OK100")
                 st.success("All markers uploaded successfully!")
 
         # Add a single Send Markers button at the bottom of the toolbox
         if st.button("🚨 Send Markers!"):
-            print("YOOOO1")
             asyncio.run(send_markers())
 
 
