@@ -144,6 +144,7 @@ def main():
         scenario_files = [
             os.path.splitext(f)[0] for f in os.listdir(directory) if f.endswith(".csv")
         ]
+        scenario_files += ["3 - ALPR"]
         scenario_files.sort()
 
         if "scenario" not in st.session_state:
@@ -178,9 +179,13 @@ def main():
                 st.query_params["scenario"] = scenario
             elif "scenario" in st.query_params:
                 del st.query_params["scenario"]
-            scenario_file = (
-                f"{directory}/{scenario}.csv" if scenario is not None else None
-            )
+
+            if scenario == "3 - ALPR" or scenario is None:
+                scenario_file = None
+            else:
+                scenario_file = (
+                    f"{directory}/{scenario}.csv"
+                )
             if scenario_file:
                 csv_data = pd.read_csv(scenario_file)
 
@@ -535,124 +540,125 @@ def main():
             # Always use 25 as the limit
             asyncio.run(delete_latest_markers(25))
 
-    if csv_data is not None:
-        with st.expander("📄 Toolbox", expanded=False):
-            # Read CSV into a pandas DataFrame
-            csv_data.sort_values(by="DELAY", ascending=True)
+    if csv_data is not None or (mode == "preset" and scenario == "3 - ALPR"):
+        if csv_data is not None:
+            with st.expander("📄 Toolbox", expanded=False):
+                # Read CSV into a pandas DataFrame
+                csv_data.sort_values(by="DELAY", ascending=True)
 
-            markers_map_viewer, scenario_editor, markers_json_viewer = st.tabs(
-                [
-                    "🗺️ Markers Map",
-                    "✏️ Scenario Editor",
-                    "👾 Markers JSON",
-                ]
-            )
-
-            # Collapsible section for the uploaded CSV (open by default)
-            with scenario_editor:
-                st.data_editor(csv_data)
-
-            # Convert CSV to JSON
-            markers_json = csv_to_json(csv_data, force_new_markers_ui)
-
-            # Collapsible section for the generated JSON (collapsed by default)
-            with markers_json_viewer:
-                st.json(markers_json)  # Display JSON in the Streamlit app
-
-                # Log JSON to the Streamlit app console
-                st.write("Log JSON:")
-                st.code(
-                    json.dumps(markers_json, indent=2), language="json"
-                )  # Log JSON to the page
-
-                # Option to download the JSON as a file
-                json_string = json.dumps(markers_json, indent=2)
-                st.download_button(
-                    label="Download JSON",
-                    data=json_string,
-                    file_name="markers.json",
-                    mime="application/json",
+                markers_map_viewer, scenario_editor, markers_json_viewer = st.tabs(
+                    [
+                        "🗺️ Markers Map",
+                        "✏️ Scenario Editor",
+                        "👾 Markers JSON",
+                    ]
                 )
 
-            with markers_map_viewer:
-                # Ensure the latitude and longitude columns are numeric
-                csv_data["LATITUDE"] = pd.to_numeric(
-                    csv_data["LATITUDE"], errors="coerce"
-                )
-                csv_data["LONGITUDE"] = pd.to_numeric(
-                    csv_data["LONGITUDE"], errors="coerce"
-                )
+                # Collapsible section for the uploaded CSV (open by default)
+                with scenario_editor:
+                    st.data_editor(csv_data)
 
-                # Drop rows with invalid coordinates
-                csv_data = csv_data.dropna(subset=["LATITUDE", "LONGITUDE"])
+                # Convert CSV to JSON
+                markers_json = csv_to_json(csv_data, force_new_markers_ui)
 
-                # Assign color based on type
-                def get_color(marker_type):
-                    if not isinstance(marker_type, str):
-                        return [255, 0, 0, 160]
-                    elif "High" in marker_type:
-                        return [255, 0, 0, 160]  # Red for critical
-                    elif "Medium" in marker_type:
-                        return [255, 165, 0, 160]  # Orange for serious
-                    else:
-                        return [255, 255, 0, 160]  # Yellow for non-serious
+                # Collapsible section for the generated JSON (collapsed by default)
+                with markers_json_viewer:
+                    st.json(markers_json)  # Display JSON in the Streamlit app
 
-                # IF priority column exists, assign color based on priority
-                # ELSE assign default color
-                csv_data["COLOR"] = (
-                    csv_data["PRIORITY"].apply(get_color)
-                    if "PRIORITY" in csv_data.columns
-                    else [[255, 0, 0, 160]] * len(csv_data)
-                )
+                    # Log JSON to the Streamlit app console
+                    st.write("Log JSON:")
+                    st.code(
+                        json.dumps(markers_json, indent=2), language="json"
+                    )  # Log JSON to the page
 
-                # Create a PyDeck map layer with circular markers
-                layer = pdk.Layer(
-                    "ScatterplotLayer",
-                    data=csv_data,
-                    get_position="[LONGITUDE, LATITUDE]",
-                    get_color="COLOR",
-                    get_radius=1,
-                    radius_min_pixels=10,
-                    radius_max_pixels=10,
-                    pickable=True,
-                )
+                    # Option to download the JSON as a file
+                    json_string = json.dumps(markers_json, indent=2)
+                    st.download_button(
+                        label="Download JSON",
+                        data=json_string,
+                        file_name="markers.json",
+                        mime="application/json",
+                    )
 
-                # Example csv_data with latitude and longitude columns
-                min_latitude = csv_data["LATITUDE"].min()
-                max_latitude = csv_data["LATITUDE"].max()
-                min_longitude = csv_data["LONGITUDE"].min()
-                max_longitude = csv_data["LONGITUDE"].max()
+                with markers_map_viewer:
+                    # Ensure the latitude and longitude columns are numeric
+                    csv_data["LATITUDE"] = pd.to_numeric(
+                        csv_data["LATITUDE"], errors="coerce"
+                    )
+                    csv_data["LONGITUDE"] = pd.to_numeric(
+                        csv_data["LONGITUDE"], errors="coerce"
+                    )
 
-                # Compute the center point (mean latitude and longitude)
-                center_latitude = csv_data["LATITUDE"].mean()
-                center_longitude = csv_data["LONGITUDE"].mean()
+                    # Drop rows with invalid coordinates
+                    csv_data = csv_data.dropna(subset=["LATITUDE", "LONGITUDE"])
 
-                # Compute the max distance in latitude and longitude (rough approximation)
-                lat_diff = max_latitude - min_latitude
-                lon_diff = max_longitude - min_longitude
+                    # Assign color based on type
+                    def get_color(marker_type):
+                        if not isinstance(marker_type, str):
+                            return [255, 0, 0, 160]
+                        elif "High" in marker_type:
+                            return [255, 0, 0, 160]  # Red for critical
+                        elif "Medium" in marker_type:
+                            return [255, 165, 0, 160]  # Orange for serious
+                        else:
+                            return [255, 255, 0, 160]  # Yellow for non-serious
 
-                # Approximate zoom level based on distance (this is a rough calculation)
-                # Higher zoom values give closer views; smaller values zoom out more
-                zoom_level = 8 - np.log(max(lat_diff, lon_diff))
+                    # IF priority column exists, assign color based on priority
+                    # ELSE assign default color
+                    csv_data["COLOR"] = (
+                        csv_data["PRIORITY"].apply(get_color)
+                        if "PRIORITY" in csv_data.columns
+                        else [[255, 0, 0, 160]] * len(csv_data)
+                    )
 
-                # Set up the view state in pydeck
-                view_state = pdk.ViewState(
-                    latitude=center_latitude,
-                    longitude=center_longitude,
-                    zoom=zoom_level,
-                    pitch=0,  # Top-down view
-                )
+                    # Create a PyDeck map layer with circular markers
+                    layer = pdk.Layer(
+                        "ScatterplotLayer",
+                        data=csv_data,
+                        get_position="[LONGITUDE, LATITUDE]",
+                        get_color="COLOR",
+                        get_radius=1,
+                        radius_min_pixels=10,
+                        radius_max_pixels=10,
+                        pickable=True,
+                    )
 
-                # Create the PyDeck map with Mapbox base style
-                deck = pdk.Deck(
-                    layers=[layer],
-                    initial_view_state=view_state,
-                    tooltip={"text": "{DESCRIPTION}"},
-                    map_style="mapbox://styles/mapbox/streets-v11",  # Mapbox base style
-                )
+                    # Example csv_data with latitude and longitude columns
+                    min_latitude = csv_data["LATITUDE"].min()
+                    max_latitude = csv_data["LATITUDE"].max()
+                    min_longitude = csv_data["LONGITUDE"].min()
+                    max_longitude = csv_data["LONGITUDE"].max()
 
-                # Display the map in Streamlit
-                st.pydeck_chart(deck)
+                    # Compute the center point (mean latitude and longitude)
+                    center_latitude = csv_data["LATITUDE"].mean()
+                    center_longitude = csv_data["LONGITUDE"].mean()
+
+                    # Compute the max distance in latitude and longitude (rough approximation)
+                    lat_diff = max_latitude - min_latitude
+                    lon_diff = max_longitude - min_longitude
+
+                    # Approximate zoom level based on distance (this is a rough calculation)
+                    # Higher zoom values give closer views; smaller values zoom out more
+                    zoom_level = 8 - np.log(max(lat_diff, lon_diff))
+
+                    # Set up the view state in pydeck
+                    view_state = pdk.ViewState(
+                        latitude=center_latitude,
+                        longitude=center_longitude,
+                        zoom=zoom_level,
+                        pitch=0,  # Top-down view
+                    )
+
+                    # Create the PyDeck map with Mapbox base style
+                    deck = pdk.Deck(
+                        layers=[layer],
+                        initial_view_state=view_state,
+                        tooltip={"text": "{DESCRIPTION}"},
+                        map_style="mapbox://styles/mapbox/streets-v11",  # Mapbox base style
+                    )
+
+                    # Display the map in Streamlit
+                    st.pydeck_chart(deck)
 
         async def send_marker(session, request_url, headers, marker, i):
             delay = (
@@ -669,9 +675,28 @@ def main():
             if response.status_code != 200:
                 return f"Marker {i}: {response.text}"
             return None
+        
+        async def send_alpr_marker(session, request_url, headers, file, i):
+            if i > 0:
+                await asyncio.sleep(i)
+
+            with open(file, 'r') as file_data:
+                marker_data = json.load(file_data)
+
+                # uncomment for debugging
+                # st.write(marker_data)
+                response = await session.post(request_url, headers=headers, json=marker_data)
+                # st.write(f"Marker {i} response: {response.status_code} - {response.text}")
+
+                if response.status_code != 200:
+                    return f"ALPR Marker {i}: {response.text}"
+            return None
 
         async def send_markers():
-            request_url = f"{st.session_state.api_url}/api/v0/marker"
+            if mode == "preset" and scenario == "3 - ALPR":
+                request_url = f"{st.session_state.api_url}/webhook/v0/axon/alpr_hit"
+            else:
+                request_url = f"{st.session_state.api_url}/api/v0/marker"
 
             headers = {
                 "Authorization": f"{st.session_state.api_token}",
@@ -682,9 +707,22 @@ def main():
 
             async with httpx.AsyncClient() as session:
                 tasks = []
-                for i, marker in enumerate(markers_json):
-                    tasks.append(send_marker(
-                        session, request_url, headers, marker, i))
+                if mode == "preset" and scenario == "3 - ALPR":
+                    directory = "./scenarios/ALPR-monte"  # Change this to the desired rdirectory path
+                    scenario_files = [
+                        os.path.splitext(f)[0] for f in os.listdir(directory)
+                    ]
+                    for i, file in enumerate(scenario_files):
+                        file_path = (
+                            f"{directory}/{file}.json"
+                        )
+                        tasks.append(send_alpr_marker(
+                            session, request_url, headers, file_path, i
+                        ))
+                else:
+                    for i, marker in enumerate(markers_json):
+                        tasks.append(send_marker(
+                            session, request_url, headers, marker, i))
                 results = await asyncio.gather(*tasks)
 
             for result in results:
