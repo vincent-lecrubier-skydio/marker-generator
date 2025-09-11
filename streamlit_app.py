@@ -144,7 +144,7 @@ def main():
         scenario_files = [
             os.path.splitext(f)[0] for f in os.listdir(directory) if f.endswith(".csv")
         ]
-        scenario_files += ["3 - ALPR"]
+        scenario_files += ["3 - Ascend 25 ALPR Seascape Demo"]
         scenario_files.sort()
 
         if "scenario" not in st.session_state:
@@ -180,7 +180,7 @@ def main():
             elif "scenario" in st.query_params:
                 del st.query_params["scenario"]
 
-            if scenario == "3 - ALPR" or scenario is None:
+            if scenario == "3 - Ascend 25 ALPR Seascape Demo" or scenario is None:
                 scenario_file = None
             else:
                 scenario_file = (
@@ -540,7 +540,7 @@ def main():
             # Always use 25 as the limit
             asyncio.run(delete_latest_markers(25))
 
-    if csv_data is not None or (mode == "preset" and scenario == "3 - ALPR"):
+    if csv_data is not None or (mode == "preset" and scenario == "3 - Ascend 25 ALPR Seascape Demo"):
         if csv_data is not None:
             with st.expander("📄 Toolbox", expanded=False):
                 # Read CSV into a pandas DataFrame
@@ -696,7 +696,7 @@ def main():
             return None
 
         async def send_markers():
-            if mode == "preset" and scenario == "3 - ALPR":
+            if mode == "preset" and scenario == "3 - Ascend 25 ALPR Seascape Demo":
                 request_url = f"{st.session_state.api_url}/webhook/v0/axon/alpr_hit"
             else:
                 request_url = f"{st.session_state.api_url}/api/v0/marker"
@@ -710,7 +710,7 @@ def main():
 
             async with httpx.AsyncClient() as session:
                 tasks = []
-                if mode == "preset" and scenario == "3 - ALPR":
+                if mode == "preset" and scenario == "3 - Ascend 25 ALPR Seascape Demo":
                     directory = "./scenarios/ALPR-monte"  # Change this to the desired rdirectory path
                     scenario_files = [
                         os.path.splitext(f)[0] for f in os.listdir(directory)
