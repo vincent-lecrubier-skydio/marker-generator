@@ -711,7 +711,7 @@ def main():
             async with httpx.AsyncClient() as session:
                 tasks = []
                 if mode == "preset" and scenario == "3 - Ascend 25 ALPR Seascape Demo":
-                    directory = "./scenarios/ALPR-monte"  # Change this to the desired rdirectory path
+                    directory = "./scenarios/ASCEND_25_ALPR"  # Change this to the desired rdirectory path
                     scenario_files = [
                         os.path.splitext(f)[0] for f in os.listdir(directory)
                     ]
