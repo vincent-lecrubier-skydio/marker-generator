@@ -683,6 +683,9 @@ def main():
             with open(file, 'r') as file_data:
                 marker_data = json.load(file_data)
 
+                # Overwrite capture_time with current_time
+                marker_data["items"][0]["capture_time"] = datetime.utcnow().isoformat()
+
                 # uncomment for debugging
                 # st.write(marker_data)
                 response = await session.post(request_url, headers=headers, json=marker_data)
