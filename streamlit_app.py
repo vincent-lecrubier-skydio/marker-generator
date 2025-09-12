@@ -403,13 +403,17 @@ def main():
         st.markdown("### Delete Latest Markers - AXON CEO SUMMIT ONLY CAUTION DO NOT TOUCH")
         st.markdown("Use this tool to delete the most recent markers from the API. This action cannot be undone.")
         
-        # Hard-code the number of markers to delete to 25
-        st.write("This button will delete the 25 most recent markers from the API.")
+        # Allow users to specify how many markers to delete (up to 25)
+        st.write("This button will delete up to 25 of the most recent markers from the API.")
         st.markdown("**⚠️ Warning: This action cannot be undone.**")
+
+        # Default to 25, which was the behavior up until now
+        num_markers = st.number_input(
+            "Number of markers to delete", min_value=1, max_value=25, value=25, step=1)
         
         async def fetch_latest_markers(limit: int) -> Tuple[List[Dict[str, Any]], List[str]]:
             """Fetch the latest markers from the API"""
-            request_url = f"{st.session_state.api_url}/api/v0/markers?limit={limit}"
+            request_url = f"{st.session_state.api_url}/api/v0/markers?per_page={limit}"
             
             headers = {
                 "Authorization": f"{st.session_state.api_token}",
@@ -535,10 +539,9 @@ def main():
                 
             st.session_state.delete_progress.progress(1.0, text=f"Completed: Deleted {success_count} markers")
 
-        # Simple button to delete exactly 25 markers
-        if st.button("🗑️ Delete Latest 25 Markers"):
-            # Always use 25 as the limit
-            asyncio.run(delete_latest_markers(25))
+        # Button to delete up to 25 markers, based on the previous input
+        if st.button(f"🗑️ Delete Latest {num_markers} Markers"):
+            asyncio.run(delete_latest_markers(num_markers))
 
     if csv_data is not None or (mode == "preset" and scenario == "3 - Ascend 25 ALPR Seascape Demo"):
         if csv_data is not None:
