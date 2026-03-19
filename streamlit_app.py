@@ -97,6 +97,8 @@ def format_scenario_mode(mode):
         return "📄 Custom"
     if mode == "tailored":
         return "🧠 Tailored"
+    if mode == "integrations":
+        return "🔌 Integrations"
     return "preset"
 
 
@@ -121,7 +123,7 @@ def main():
     if "mode" not in st.session_state:
         if "mode" in st.query_params:
             mode_param = st.query_params.get("mode")
-            if mode_param in ["preset", "random", "custom", "tailored"]:
+            if mode_param in ["preset", "random", "custom", "tailored", "integrations"]:
                 st.session_state["mode"] = mode_param
             else:
                 st.session_state["mode"] = "preset"
@@ -130,7 +132,7 @@ def main():
 
     mode = st.segmented_control(
         "Mode:",
-        ["preset", "random", "custom", "tailored"],
+        ["preset", "random", "custom", "tailored", "integrations"],
         format_func=format_scenario_mode,
         key="mode"
     )
@@ -368,6 +370,95 @@ def main():
                     csv_data = csv_data.dropna(subset=["LATITUDE", "LONGITUDE"])
                     st.success("Addresses converted to coordinates.")
  
+    if mode == "integrations":
+        integration = st.selectbox("Integration", ["prepared"], key="integration_select")
+
+        intg_id = st.text_input("ID", key="intg_id")
+        intg_lat = st.text_input("Latitude", key="intg_lat")
+        intg_lng = st.text_input("Longitude", key="intg_lng")
+        intg_insights = st.text_area("Insights", key="intg_insights")
+
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if st.button("📞 Start Call"):
+                try:
+                    response = httpx.post(
+                        "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ==/prepared/start_call",
+                        json={
+                            "id": intg_id,
+                            "skydioApiToken": st.session_state.get("api_token", ""),
+                            "url": st.session_state.get("api_url", ""),
+                            "insights": intg_insights,
+                            "lng": float(intg_lng) if intg_lng else 0,
+                            "lat": float(intg_lat) if intg_lat else 0,
+                        },
+                        headers={"Content-Type": "application/json"},
+                    )
+                    if response.status_code == 200:
+                        st.success("Start Call sent successfully!")
+                    else:
+                        st.error(f"Start Call failed: {response.status_code} - {response.text}")
+                except Exception as e:
+                    st.error(f"Start Call error: {e}")
+        with col2:
+            if st.button("📴 End Call"):
+                try:
+                    response = httpx.post(
+                        "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ==/prepared/end_call",
+                        json={
+                            "id": intg_id,
+                            "skydioApiToken": st.session_state.get("api_token", ""),
+                            "url": st.session_state.get("api_url", ""),
+                        },
+                        headers={"Content-Type": "application/json"},
+                    )
+                    if response.status_code == 200:
+                        st.success("End Call sent successfully!")
+                    else:
+                        st.error(f"End Call failed: {response.status_code} - {response.text}")
+                except Exception as e:
+                    st.error(f"End Call error: {e}")
+        with col3:
+            if st.button("💡 Update Insight"):
+                try:
+                    response = httpx.post(
+                        "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ==/prepared/update_insights",
+                        json={
+                            "id": intg_id,
+                            "insights": intg_insights,
+                        },
+                        headers={"Content-Type": "application/json"},
+                    )
+                    if response.status_code == 200:
+                        st.success("Update Insight sent successfully!")
+                    else:
+                        st.error(f"Update Insight failed: {response.status_code} - {response.text}")
+                except Exception as e:
+                    st.error(f"Update Insight error: {e}")
+
+        with st.expander("📞 Ongoing Calls", expanded=False):
+            if st.button("🔄 Get Calls"):
+                try:
+                    response = httpx.get(
+                        "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ==",
+                        headers={"Content-Type": "application/json"},
+                    )
+                    if response.status_code == 200:
+                        data = response.json()
+                        if data:
+                            st.write("**Call IDs:**")
+                            if isinstance(data, list):
+                                for call_id in data:
+                                    st.write(f"- `{call_id}`")
+                            else:
+                                st.json(data)
+                        else:
+                            st.info("No ongoing calls.")
+                    else:
+                        st.error(f"Get Calls failed: {response.status_code} - {response.text}")
+                except Exception as e:
+                    st.error(f"Get Calls error: {e}")
+
     if "api_url" not in st.session_state:
         if "api_url" in st.query_params:
             st.session_state["api_url"] = st.query_params.get("api_url")
@@ -399,7 +490,8 @@ def main():
             del st.query_params["api_token"]
             
     # Add marker management tools in a dedicated section
-    with st.expander("🗑️ Marker Management", expanded=False):
+    if mode != "integrations":
+      with st.expander("🗑️ Marker Management", expanded=False):
         st.markdown("### Delete Latest Markers - AXON CEO SUMMIT ONLY CAUTION DO NOT TOUCH")
         st.markdown("Use this tool to delete the most recent markers from the API. This action cannot be undone.")
         
