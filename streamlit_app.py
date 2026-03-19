@@ -371,6 +371,14 @@ def main():
                     st.success("Addresses converted to coordinates.")
  
     if mode == "integrations":
+        PRISMATIC_BASE_URL = "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ=="
+
+        st.info(
+            "To demo via Streamlit, please add the following cloud override to your Skydio org:\n\n"
+            "`prepared_api_url: https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOjRhMzczYmYzLTY3ZjMtNDdlNi04MGQ5LTBhYTc2MDAyNDQyNA==`\n\n"
+            "**Please end any calls you start to avoid hanging workflows and cross contamination of data.**"
+        )
+
         integration = st.selectbox("Integration", ["prepared"], key="integration_select")
 
         intg_id = st.text_input("ID", key="intg_id")
@@ -381,66 +389,100 @@ def main():
         col1, col2, col3 = st.columns(3)
         with col1:
             if st.button("📞 Start Call"):
-                try:
-                    response = httpx.post(
-                        "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ==/prepared/start_call",
-                        json={
-                            "id": intg_id,
-                            "skydioApiToken": st.session_state.get("api_token", ""),
-                            "url": st.session_state.get("api_url", ""),
-                            "insights": intg_insights,
-                            "lng": float(intg_lng) if intg_lng else 0,
-                            "lat": float(intg_lat) if intg_lat else 0,
-                        },
-                        headers={"Content-Type": "application/json"},
-                    )
-                    if response.status_code == 200:
-                        st.success("Start Call sent successfully!")
-                    else:
-                        st.error(f"Start Call failed: {response.status_code} - {response.text}")
-                except Exception as e:
-                    st.error(f"Start Call error: {e}")
+                missing = []
+                if not intg_id:
+                    missing.append("ID")
+                if not intg_lat:
+                    missing.append("Latitude")
+                if not intg_lng:
+                    missing.append("Longitude")
+                if not intg_insights:
+                    missing.append("Insights")
+                if not st.session_state.get("api_token"):
+                    missing.append("API Token")
+                if not st.session_state.get("api_url"):
+                    missing.append("API URL")
+                if missing:
+                    st.warning(f"Please fill out: {', '.join(missing)}")
+                else:
+                    try:
+                        response = httpx.post(
+                            f"{PRISMATIC_BASE_URL}/prepared/start_call",
+                            json={
+                                "id": intg_id,
+                                "skydioApiToken": st.session_state.get("api_token", ""),
+                                "url": st.session_state.get("api_url", ""),
+                                "insights": intg_insights,
+                                "lng": float(intg_lng) if intg_lng else 0,
+                                "lat": float(intg_lat) if intg_lat else 0,
+                            },
+                            headers={"Content-Type": "application/json"},
+                        )
+                        if response.status_code == 200:
+                            st.success("Start Call sent successfully!")
+                        else:
+                            st.error(f"Start Call failed: {response.status_code} - {response.text}")
+                    except Exception as e:
+                        st.error(f"Start Call error: {e}")
         with col2:
             if st.button("📴 End Call"):
-                try:
-                    response = httpx.post(
-                        "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ==/prepared/end_call",
-                        json={
-                            "id": intg_id,
-                            "skydioApiToken": st.session_state.get("api_token", ""),
-                            "url": st.session_state.get("api_url", ""),
-                        },
-                        headers={"Content-Type": "application/json"},
-                    )
-                    if response.status_code == 200:
-                        st.success("End Call sent successfully!")
-                    else:
-                        st.error(f"End Call failed: {response.status_code} - {response.text}")
-                except Exception as e:
-                    st.error(f"End Call error: {e}")
+                missing = []
+                if not intg_id:
+                    missing.append("ID")
+                if not st.session_state.get("api_token"):
+                    missing.append("API Token")
+                if not st.session_state.get("api_url"):
+                    missing.append("API URL")
+                if missing:
+                    st.warning(f"Please fill out: {', '.join(missing)}")
+                else:
+                    try:
+                        response = httpx.post(
+                            f"{PRISMATIC_BASE_URL}/prepared/end_call",
+                            json={
+                                "id": intg_id,
+                                "skydioApiToken": st.session_state.get("api_token", ""),
+                                "url": st.session_state.get("api_url", ""),
+                            },
+                            headers={"Content-Type": "application/json"},
+                        )
+                        if response.status_code == 200:
+                            st.success("End Call sent successfully!")
+                        else:
+                            st.error(f"End Call failed: {response.status_code} - {response.text}")
+                    except Exception as e:
+                        st.error(f"End Call error: {e}")
         with col3:
             if st.button("💡 Update Insight"):
-                try:
-                    response = httpx.post(
-                        "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ==/prepared/update_insights",
-                        json={
-                            "id": intg_id,
-                            "insights": intg_insights,
-                        },
-                        headers={"Content-Type": "application/json"},
-                    )
-                    if response.status_code == 200:
-                        st.success("Update Insight sent successfully!")
-                    else:
-                        st.error(f"Update Insight failed: {response.status_code} - {response.text}")
-                except Exception as e:
-                    st.error(f"Update Insight error: {e}")
+                missing = []
+                if not intg_id:
+                    missing.append("ID")
+                if not intg_insights:
+                    missing.append("Insights")
+                if missing:
+                    st.warning(f"Please fill out: {', '.join(missing)}")
+                else:
+                    try:
+                        response = httpx.post(
+                            f"{PRISMATIC_BASE_URL}/prepared/update_insights",
+                            json={
+                                "id": intg_id,
+                                "insights": intg_insights,
+                            },
+                            headers={"Content-Type": "application/json"},
+                        )
+                        if response.status_code == 200:
+                            st.success("Update Insight sent successfully!")
+                        else:
+                            st.error(f"Update Insight failed: {response.status_code} - {response.text}")
+                    except Exception as e:
+                        st.error(f"Update Insight error: {e}")
 
         with st.expander("📞 Ongoing Calls", expanded=False):
             if st.button("🔄 Get Calls"):
                 try:
                     response = httpx.get(
-                        "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ==",
+                        PRISMATIC_BASE_URL,
                         headers={"Content-Type": "application/json"},
                     )
                     if response.status_code == 200:
