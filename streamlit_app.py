@@ -371,11 +371,11 @@ def main():
                     st.success("Addresses converted to coordinates.")
  
     if mode == "integrations":
-        PRISMATIC_BASE_URL = "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmQyZTliYTk3LTBlZGYtNGFjNy05OWM5LWQ5YjdhZjU0M2UzYQ=="
+        PRISMATIC_BASE_URL = "https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOmViZjIzNDZiLWEwZWEtNDJlOC1iMzE2LTc0ZTNlOGM2OTMwZA=="
 
         st.info(
             "To demo via Streamlit, please add the following cloud override to your Skydio org:\n\n"
-            "`prepared_api_url: https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOjRhMzczYmYzLTY3ZjMtNDdlNi04MGQ5LTBhYTc2MDAyNDQyNA==`\n\n"
+            "`prepared_api_url: https://hooks.prismatic.io/trigger/SW5zdGFuY2VGbG93Q29uZmlnOjQ5N2Q3ODAzLWEwNzUtNDYyOS04NGIxLWIxYjAzZWI5MGFmNg==`\n\n"
             "**Please end any calls you start to avoid hanging workflows and cross contamination of data.**"
         )
 
