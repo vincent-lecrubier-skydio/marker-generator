@@ -13,6 +13,22 @@ from typing import List, Dict, Any, Tuple
 from mapbox_util import forward_geocode
 
 
+UAS_DETECTION_DETAIL_COLUMNS = {
+    "DRONE_ID": str,
+    "DRONE_MODEL": str,
+    "DRONE_MANUFACTURER": str,
+    "PROTOCOL": str,
+    "DRONE_ALTITUDE": float,
+    "DRONE_YAW": float,
+    "DRONE_SPEED": float,
+    "INITIAL_DETECTION_LATITUDE": float,
+    "INITIAL_DETECTION_LONGITUDE": float,
+    "PILOT_LATITUDE": float,
+    "PILOT_LONGITUDE": float,
+}
+UAS_DETECTION_OFFSET_DEG = 0.009
+
+
 def csv_to_json(
     csv_data: pd.DataFrame, force_new_markers_ui: bool = False
 ) -> List[Dict[str, Any]]:
@@ -38,9 +54,10 @@ def csv_to_json(
         )
         latitude_value = row["LATITUDE"]
         longitude_value = row["LONGITUDE"]
+        is_uas_detection = type_value == "UAS_DETECTION"
 
         # Create the marker dict
-        if not force_new_markers_ui:
+        if not force_new_markers_ui or is_uas_detection:
             marker = {
                 "type": type_value,
                 "description": description_value,
@@ -70,16 +87,21 @@ def csv_to_json(
             marker["title"] = row["TITLE"]
 
         marker_details = {}
-        if "CODE" in row.keys() and pd.notna(row["CODE"]) and row["CODE"]:
-            marker_details["code"] = row["CODE"]
-        if (
-            "INCIDENT_ID" in row.keys()
-            and pd.notna(row["INCIDENT_ID"])
-            and row["INCIDENT_ID"]
-        ):
-            marker_details["incident_id"] = row["INCIDENT_ID"]
-        if "PRIORITY" in row.keys() and pd.notna(row["PRIORITY"]) and row["PRIORITY"]:
-            marker_details["priority"] = row["PRIORITY"]
+        if is_uas_detection:
+            for column, convert in UAS_DETECTION_DETAIL_COLUMNS.items():
+                if column in row.keys() and pd.notna(row[column]) and row[column] != "":
+                    marker_details[column.lower()] = convert(row[column])
+        else:
+            if "CODE" in row.keys() and pd.notna(row["CODE"]) and row["CODE"]:
+                marker_details["code"] = row["CODE"]
+            if (
+                "INCIDENT_ID" in row.keys()
+                and pd.notna(row["INCIDENT_ID"])
+                and row["INCIDENT_ID"]
+            ):
+                marker_details["incident_id"] = row["INCIDENT_ID"]
+            if "PRIORITY" in row.keys() and pd.notna(row["PRIORITY"]) and row["PRIORITY"]:
+                marker_details["priority"] = row["PRIORITY"]
 
         if marker_details:
             marker["marker_details"] = marker_details
@@ -277,7 +299,9 @@ def main():
 
         if sample_csv_data is not None:
             # Randomize selected markers
-            csv_data = sample_csv_data.sample(n=sample_size)
+            csv_data = sample_csv_data.sample(
+                n=sample_size, replace=sample_size > len(sample_csv_data)
+            ).reset_index(drop=True)
 
             random_indices = csv_data.index
             for idx in random_indices:
@@ -286,10 +310,22 @@ def main():
                 delta_lat = (r * np.cos(theta)) / 111.32
                 delta_lon = (r * np.sin(theta)) / \
                     (111.32 * np.cos(np.deg2rad(center_lat)))
-                csv_data.loc[idx, "LATITUDE"] = center_lat + delta_lat
-                csv_data.loc[idx, "LONGITUDE"] = center_lon + delta_lon
+                new_latitude = center_lat + delta_lat
+                new_longitude = center_lon + delta_lon
+                csv_data.loc[idx, "LATITUDE"] = new_latitude
+                csv_data.loc[idx, "LONGITUDE"] = new_longitude
                 random_delay = np.random.uniform(min_delay, max_delay)
                 csv_data.loc[idx, "DELAY"] = int(random_delay)
+                if csv_data.loc[idx, "TYPE"] == "UAS_DETECTION":
+                    for column, origin in (
+                        ("PILOT_LATITUDE", new_latitude),
+                        ("PILOT_LONGITUDE", new_longitude),
+                        ("INITIAL_DETECTION_LATITUDE", new_latitude),
+                        ("INITIAL_DETECTION_LONGITUDE", new_longitude),
+                    ):
+                        csv_data.loc[idx, column] = origin + np.random.uniform(
+                            -UAS_DETECTION_OFFSET_DEG, UAS_DETECTION_OFFSET_DEG
+                        )
             csv_data.sort_values(
                 by="DELAY", ascending=True, inplace=True)
 
